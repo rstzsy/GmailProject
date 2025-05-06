@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gmail_project/starred_page.dart'; 
 
 // ignore: use_key_in_widget_constructors
 class MenuDrawer extends StatelessWidget {
@@ -83,6 +84,7 @@ class MenuDrawer extends StatelessWidget {
               if (item.containsKey("divider")) {
                 return Divider(color: Colors.grey[800]);
               }
+
               return ListTile(
                 leading: Icon(item["icon"], color: Colors.white70),
                 title: Text(
@@ -98,8 +100,18 @@ class MenuDrawer extends StatelessWidget {
                         style: TextStyle(color: Colors.white70),
                       )
                     : null,
-                onTap: () {},
-                // Use tileColor property properly
+                onTap: () {
+                  Navigator.pop(context); // close drawer
+
+                  // chuyen trang
+                  if (item["title"] == "Starred") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const StarredPage()),
+                    );
+                  }
+                  
+                },
                 tileColor: item["highlight"] == true ? Colors.redAccent.withOpacity(0.2) : null,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               );

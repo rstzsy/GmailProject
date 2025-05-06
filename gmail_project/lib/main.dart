@@ -34,6 +34,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
+      //---------------search, drawer---------------------
       drawer: MenuDrawer(),
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(65),
@@ -76,6 +77,8 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
       ),
+      //------------------------------------------
+      
       body: const MyListView(),  // list view
 
       // floating button
