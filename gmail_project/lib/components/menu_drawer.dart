@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:gmail_project/starred_page.dart'; 
+import 'package:gmail_project/pages/starred_page.dart'; 
 
 // ignore: use_key_in_widget_constructors
 class MenuDrawer extends StatelessWidget {

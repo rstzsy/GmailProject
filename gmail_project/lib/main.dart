@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'listview.dart';  
-import 'menu_drawer.dart';  
-import 'search.dart';  
+import 'components/listview.dart';
+import 'components/menu_drawer.dart';
+import 'components/search.dart';
+import 'pages/profile_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -14,7 +15,17 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        fontFamily: 'Baloo2',
+      ).copyWith(
+        textTheme: ThemeData.dark().textTheme.apply(
+              fontFamily: 'Baloo2',
+            ),
+        primaryTextTheme: ThemeData.dark().primaryTextTheme.apply(
+              fontFamily: 'Baloo2',
+            ),
+      ),
       home: const MyHomePage(),
     );
   }
@@ -43,7 +54,10 @@ class _MyHomePageState extends State<MyHomePage> {
             decoration: BoxDecoration(
               color: const Color.fromARGB(255, 55, 54, 54),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color.fromARGB(255, 59, 58, 58), width: 1.5),
+              border: Border.all(
+                color: const Color.fromARGB(255, 59, 58, 58),
+                width: 1.5,
+              ),
               boxShadow: const [
                 BoxShadow(
                   color: Colors.black26,
@@ -58,18 +72,33 @@ class _MyHomePageState extends State<MyHomePage> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.menu, color: Color.fromARGB(221, 232, 229, 229)),
+                    icon: const Icon(
+                      Icons.menu,
+                      color: Color.fromARGB(221, 232, 229, 229),
+                    ),
                     onPressed: () {
                       _scaffoldKey.currentState?.openDrawer();
                     },
                   ),
                   Expanded(
-                    child: Search(),  // search widgetwidget
+                    child: Search(), // search widgetwidget
                   ),
                   const SizedBox(width: 10),
-                  const CircleAvatar(
-                    backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/1.jpg'),
-                    radius: 20,
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ProfilePage(),
+                        ),
+                      );
+                    },
+                    child: const CircleAvatar(
+                      backgroundImage: NetworkImage(
+                        'https://randomuser.me/api/portraits/men/1.jpg',
+                      ),
+                      radius: 20,
+                    ),
                   ),
                 ],
               ),
@@ -77,10 +106,9 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
       ),
-      //------------------------------------------
-      
-      body: const MyListView(),  // list view
 
+      //------------------------------------------
+      body: const MyListView(), // list view
       // floating button
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -88,8 +116,8 @@ class _MyHomePageState extends State<MyHomePage> {
           print("Floating button pressed");
         },
         // ignore: sort_child_properties_last
-        child: const Icon(Icons.add),  
-        backgroundColor: const Color.fromARGB(255, 89, 89, 89),  
+        child: const Icon(Icons.add),
+        backgroundColor: const Color.fromARGB(255, 89, 89, 89),
       ),
     );
   }

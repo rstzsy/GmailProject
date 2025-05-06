@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'search.dart';
-import 'menu_drawer.dart';
+import '../components/search.dart';
+import '../components/menu_drawer.dart';
 
 class StarredPage extends StatefulWidget {
   const StarredPage({super.key});
