@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:gmail_project/pages/EditProfile_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'welcome_page.dart'; 
 import 'EditProfile_page.dart';
+
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
@@ -121,7 +123,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 20),
                 child: ElevatedButton.icon(
-                  onPressed: () {},
+                  //onPressed: () {},
+                  onPressed: () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => WelcomeScreen()), 
+                      (route) => false, 
+                    );
+                  },
                   icon: const Icon(FontAwesomeIcons.arrowRightFromBracket, color: Color(0xFFE21033)),
                   label: const Text("Logout", style: TextStyle(color: Colors.black)),
                   style: ElevatedButton.styleFrom(
