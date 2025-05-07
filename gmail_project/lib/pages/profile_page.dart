@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:gmail_project/pages/EditProfile_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'welcome_page.dart'; 
+import 'EditProfile_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -99,9 +101,23 @@ class _ProfilePageState extends State<ProfilePage> {
 
               const SizedBox(height: 30),
               _buildListTile(Icons.notifications, "Notifications", Color(0xFFFF80AB)),
-              _buildListTile(FontAwesomeIcons.userSecret, "Edit Profile", Color(0xFFC1B0E8)),
-              _buildListTile(Icons.file_download, "My downloads", Color(0xFF42A5F5)),
-              _buildListTile(Icons.payment, "Payment settings", Color(0xFFFFB300)),
+              
+              _buildListTile(
+                FontAwesomeIcons.userSecret,
+                "Edit Profile",
+                Color(0xFF4CC9FE),
+                (){
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const EditProfilePage(),
+                    ),
+                  );
+                },
+
+              ),
+              _buildListTile(FontAwesomeIcons.pencil, "Themes", Color(0xFF42A5F5)),
+              _buildListTile(FontAwesomeIcons.language, "Languages", Color(0xFFFFB300)),
               const Spacer(),
               Container(
                 width: double.infinity,
@@ -182,12 +198,12 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 
-  Widget _buildListTile(IconData icon, String title, Color color) {
+  Widget _buildListTile(IconData icon, String title, Color color, [VoidCallback ? onTap]) {
     return ListTile(
       leading: Icon(icon, color: color),
       title: Text(title, style: const TextStyle(color: Colors.white)),
       trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
-      onTap: () {},
+      onTap: onTap,
     );
   }
 }
