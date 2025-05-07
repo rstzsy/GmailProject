@@ -15,12 +15,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   final firstNameController = TextEditingController(text: "Lillie");
   final lastNameController = TextEditingController(text: "Brown");
-  final positionController =
-      TextEditingController(text: "UI/UX Designer");
+  final positionController = TextEditingController(text: "UI/UX Designer");
+  final emailController = TextEditingController(text: "lillie@example.com");
+  final passwordController = TextEditingController(text: "mypassword123");
+
+  bool _obscurePassword = true;
 
   Future<void> _pickImage() async {
-    final pickedFile =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
@@ -30,7 +32,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Widget _buildLabel(String text) {
     return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 8),
+      padding: const EdgeInsets.only(top: 20, bottom: 6),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
@@ -41,23 +43,43 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller,
-      {bool bold = false, Widget? suffixIcon}) {
+  Widget _buildTextField(
+    TextEditingController controller, {
+    bool bold = false,
+    bool isPassword = false,
+    Widget? suffixIcon,
+  }) {
     return TextField(
       controller: controller,
+      obscureText: isPassword ? _obscurePassword : false,
       style: TextStyle(
         color: Colors.white,
         fontWeight: bold ? FontWeight.bold : FontWeight.normal,
       ),
       decoration: InputDecoration(
         filled: true,
-        fillColor: const Color(0xFF1F1F2E),
-        suffixIcon: suffixIcon,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        fillColor: const Color(0xFF1E1E1E),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.white70,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+              )
+            : suffixIcon,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(20),
           borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(color: Color(0xFFF48FB1), width: 1.5),
         ),
         hintStyle: const TextStyle(color: Colors.white38),
       ),
@@ -67,14 +89,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1C),
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1C),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Color(0xFFF48FB1)),
         title: const Text(
-          "Profile",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          "Edit Profile",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
       body: SingleChildScrollView(
@@ -85,22 +107,32 @@ class _EditProfilePageState extends State<EditProfilePage> {
             Stack(
               alignment: Alignment.bottomRight,
               children: [
-                CircleAvatar(
-                  radius: 60,
-                  backgroundImage: _image != null
-                      ? FileImage(_image!)
-                      : const AssetImage('assets/images/avatar.png') as ImageProvider,
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFD5C4F1), Color(0xFFF48FB1)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(3),
+                  child: CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.black,
+                    child: ClipOval(
+                      child: _image != null
+                          ? Image.file(_image!, fit: BoxFit.cover, width: 95, height: 95)
+                          : Image.asset('assets/images/avatar.png', fit: BoxFit.cover, width: 95, height: 95),
+                    ),
+                  ),
                 ),
                 GestureDetector(
                   onTap: _pickImage,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFffcad4),
-                      shape: BoxShape.circle,
-                    ),
-                    child:
-                        const Icon(Icons.edit, size: 20, color: Colors.black),
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.white,
+                    child: const Icon(Icons.edit, size: 18, color: Colors.black),
                   ),
                 ),
               ],
@@ -113,21 +145,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
             _buildLabel("Current Position"),
             _buildTextField(
               positionController,
-              suffixIcon:
-                  const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+              suffixIcon: const Icon(Icons.keyboard_arrow_down, color: Colors.white70),
             ),
+            _buildLabel("Email"),
+            _buildTextField(emailController),
+            _buildLabel("Password"),
+            _buildTextField(passwordController, isPassword: true),
             const SizedBox(height: 30),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                },
+                onPressed: () {},
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(255, 255, 230, 238),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
                   ),
+                  backgroundColor: const Color(0xFFF48FB1),
+                  elevation: 5,
                 ),
                 child: const Text(
                   "Save",

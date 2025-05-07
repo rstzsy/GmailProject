@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:gmail_project/pages/EditProfile_page.dart';
+import 'package:gmail_project/pages/editProfile_page.dart';
+import 'package:gmail_project/pages/languagSelection_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'welcome_page.dart'; 
-import 'EditProfile_page.dart';
+import 'editProfile_page.dart';
+import 'languagSelection_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -14,6 +16,9 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+
+  bool _isNotificationOn = true;
+
   File? _avatarImage;
 
   Future<void> _pickImage() async {
@@ -45,13 +50,24 @@ class _ProfilePageState extends State<ProfilePage> {
               Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Color(0xFFF4538A),
-                    child: ClipOval(
-                      child: _avatarImage != null
-                          ? Image.file(_avatarImage!, fit: BoxFit.cover, width: 90, height: 90)
-                          : Image.asset('assets/images/avatar.png', fit: BoxFit.cover, width: 90, height: 90),
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFD5C4F1), Color(0xFFF48FB1)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(3),
+                    child: CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Colors.black, 
+                      child: ClipOval(
+                        child: _avatarImage != null
+                            ? Image.file(_avatarImage!, fit: BoxFit.cover, width: 95, height: 95)
+                            : Image.asset('assets/images/avatar.png', fit: BoxFit.cover, width: 95, height: 95),
+                      ),
                     ),
                   ),
                   Positioned(
@@ -60,14 +76,15 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: GestureDetector(
                       onTap: _pickImage,
                       child: CircleAvatar(
-                        radius: 15,
+                        radius: 16,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.edit, size: 16, color: Colors.black),
+                        child: const Icon(Icons.edit, size: 18, color: Colors.black),
                       ),
                     ),
                   ),
                 ],
               ),
+
               const SizedBox(height: 10),
               const Text(
                 'Lillie Brown',
@@ -100,8 +117,22 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
 
               const SizedBox(height: 30),
-              _buildListTile(Icons.notifications, "Notifications", Color(0xFFFF80AB)),
-              
+              _buildListTile(
+                Icons.notifications,
+                "Notifications",
+                Color(0xFFFF80AB),
+                null, 
+                Switch(
+                  value: _isNotificationOn,
+                  activeColor: Color(0xFFFF80AB),
+                  onChanged: (value) {
+                    setState(() {
+                      _isNotificationOn = value;
+                    });
+                  },
+                ),
+              ),
+
               _buildListTile(
                 FontAwesomeIcons.userSecret,
                 "Edit Profile",
@@ -116,8 +147,21 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
 
               ),
-              _buildListTile(FontAwesomeIcons.pencil, "Themes", Color(0xFF42A5F5)),
-              _buildListTile(FontAwesomeIcons.language, "Languages", Color(0xFFFFB300)),
+
+              _buildListTile(
+                FontAwesomeIcons.language,
+                "Languages",
+                Color(0xFFFFB300),
+                (){
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const LanguageSelectionPage(),
+                    ),
+                  );
+                },
+
+              ),
               const Spacer(),
               Container(
                 width: double.infinity,
@@ -198,11 +242,11 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 
-  Widget _buildListTile(IconData icon, String title, Color color, [VoidCallback ? onTap]) {
+  Widget _buildListTile(IconData icon, String title, Color color, [VoidCallback? onTap, Widget? trailing]) {
     return ListTile(
       leading: Icon(icon, color: color),
       title: Text(title, style: const TextStyle(color: Colors.white)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
+      trailing: trailing ?? const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
       onTap: onTap,
     );
   }
