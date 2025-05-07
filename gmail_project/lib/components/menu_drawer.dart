@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:gmail_project/pages/starred_page.dart'; 
+import 'package:gmail_project/pages/inbox_page.dart'; 
+import 'package:gmail_project/pages/sent_page.dart'; 
+import 'package:gmail_project/pages/draft_page.dart'; 
+import 'package:gmail_project/pages/trash_page.dart'; 
+
 
 // ignore: use_key_in_widget_constructors
 class MenuDrawer extends StatelessWidget {
@@ -110,7 +115,30 @@ class MenuDrawer extends StatelessWidget {
                       MaterialPageRoute(builder: (context) => const StarredPage()),
                     );
                   }
-                  
+                  else if (item["title"] == "Inbox") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyHomePage()),
+                    );
+                  }
+                  else if (item["title"] == "Sent") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SentPage()),
+                    );
+                  }
+                  else if (item["title"] == "Drafts") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const DraftPage()),
+                    );
+                  }
+                  else if (item["title"] == "Bin") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const TrashPage()),
+                    );
+                  }
                 },
                 tileColor: item["highlight"] == true ? Colors.redAccent.withOpacity(0.2) : null,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

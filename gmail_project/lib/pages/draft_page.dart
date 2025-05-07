@@ -3,28 +3,37 @@ import '../components/search.dart';
 import '../components/menu_drawer.dart';
 import 'composeEmail_page.dart';
 
-class StarredPage extends StatefulWidget {
-  const StarredPage({super.key});
+class DraftPage extends StatefulWidget {
+  const DraftPage({super.key});
 
   @override
-  State<StarredPage> createState() => _StarredPageState();
+  State<DraftPage> createState() => _DraftPageState();
 }
 
-class _StarredPageState extends State<StarredPage> {
+class _DraftPageState extends State<DraftPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final List<Map<String, dynamic>> users = [
-    // {"id": 1, "fullName": "John Doe", "jobTitle": "Software Engineer"},
-    // {"id": 2, "fullName": "Jane Smith", "jobTitle": "Product Manager"},
-    
+  final List<Map<String, dynamic>> drafts = [
+    // {
+    //   "id": 1,
+    //   "recipient": "",
+    //   "subject": "Weekly Report",
+    //   "content": "Here is the draft for this week's report...",
+    //   "date": "6 May",
+    // },
+    // {
+    //   "id": 2,
+    //   "recipient": "bob@example.com",
+    //   "subject": "",
+    //   "content": "Don't forget our meeting tomorrow at 10 AM.",
+    //   "date": "5 May",
+    // },
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-
-      //--------search, drawer-----------
       drawer: MenuDrawer(),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(65),
@@ -47,7 +56,7 @@ class _StarredPageState extends State<StarredPage> {
                   const Expanded(child: Search()),
                   const SizedBox(width: 10),
                   const CircleAvatar(
-                    backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/1.jpg'),
+                    backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/3.jpg'),
                     radius: 20,
                   ),
                 ],
@@ -56,50 +65,65 @@ class _StarredPageState extends State<StarredPage> {
           ),
         ),
       ),
-      //---------------------------------------
-
-      // -----neu khong co du lieu se hien thi hinh anh mac dinh-----
-      body: users.isEmpty
+      body: drafts.isEmpty
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset('assets/images/empty_starred.png', width: 150, height: 150),
+                  Image.asset('assets/images/empty_draft.png', width: 150, height: 150),
                   const SizedBox(height: 20),
-                  const Text("Nothing in starred folder", style: TextStyle(color: Colors.white, fontSize: 16)),
+                  const Text("Nothing in Draft folder", style: TextStyle(color: Colors.white, fontSize: 16)),
                 ],
               ),
             )
-            //--------------------
-
           : ListView.builder(
-              itemCount: users.length,
+              itemCount: drafts.length,
               itemBuilder: (context, index) {
-                var user = users[index];
+                var draft = drafts[index];
                 return ListTile(
-                  onTap: () {},
-                  leading: CircleAvatar(
-                    backgroundImage: NetworkImage(
-                      'https://randomuser.me/api/portraits/men/${user['id']}.jpg',
-                    ),
-                    radius: 25,
+                  onTap: () {
+                    // xu li khi nhan vao email
+                  },
+                  leading: const Icon(Icons.drafts, color: Colors.white),
+                  title: Text(
+                    "Drafts",
+                    style: const TextStyle(color: Colors.red),
                   ),
-                  title: Text(user["fullName"].toString(), style: const TextStyle(color: Colors.white)),
-                  subtitle: Text(user["jobTitle"].toString(), style: const TextStyle(color: Colors.white70)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        draft["recipient"].isEmpty ? "Không có người nhận" : draft["recipient"].split('@')[0], 
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      Text(
+                        draft["subject"].isEmpty ? "Không có chủ đề" : draft["subject"],
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      Text(
+                        draft["content"],
+                        style: const TextStyle(color: Colors.white54),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                   trailing: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text("7 Mar", style: TextStyle(color: Colors.grey[400], fontSize: 14)),
+                      Text(
+                        draft["date"],
+                        style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                      ),
                       const SizedBox(height: 4),
-                      const Icon(Icons.star, color: Colors.yellow), // tô vàng ngôi sao
+                      const Icon(Icons.star_outline, color: Colors.grey),
                     ],
                   ),
                 );
+
               },
             ),
-
-      // floatting button
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.push(
