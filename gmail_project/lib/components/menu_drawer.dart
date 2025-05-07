@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gmail_project/pages/starred_page.dart'; 
 import 'package:gmail_project/pages/inbox_page.dart'; 
 import 'package:gmail_project/pages/sent_page.dart'; 
+import 'package:gmail_project/pages/draft_page.dart'; 
 
 
 // ignore: use_key_in_widget_constructors
@@ -123,6 +124,12 @@ class MenuDrawer extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const SentPage()),
+                    );
+                  }
+                  else if (item["title"] == "Drafts") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const DraftPage()),
                     );
                   }
                 },

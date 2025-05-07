@@ -64,6 +64,7 @@ flutter:
     - assets/images/empty_starred.png
     - assets/images/avatar.png
     - assets/images/empty_sent.png
+    - assets/images/empty_draft.png
 
   fonts:
     - family: Baloo2
