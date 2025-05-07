@@ -69,6 +69,12 @@ flutter:
     - assets/images/welcome.png
     - assets/images/signup.png
     - assets/images/login.png
+    - assets/images/flag_vietnam.png
+    - assets/images/flag_united.png
+    - assets/images/flag_spanish.png
+    - assets/images/flag_france.png
+    - assets/images/flag_spanish.png
+
 
   fonts:
     - family: Baloo2
