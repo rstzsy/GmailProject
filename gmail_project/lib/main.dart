@@ -3,6 +3,7 @@ import 'components/listview.dart';
 import 'components/menu_drawer.dart';
 import 'components/search.dart';
 import 'pages/profile_page.dart';
+import 'pages/composeEmail_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -112,10 +113,11 @@ class _MyHomePageState extends State<MyHomePage> {
       // floating button
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // ignore: avoid_print
-          print("Floating button pressed");
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ComposeEmailPage()),
+          );
         },
-        // ignore: sort_child_properties_last
         child: const Icon(Icons.add),
         backgroundColor: const Color.fromARGB(255, 89, 89, 89),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../components/search.dart';
 import '../components/menu_drawer.dart';
+import 'composeEmail_page.dart';
 
 class StarredPage extends StatefulWidget {
   const StarredPage({super.key});
@@ -101,7 +102,10 @@ class _StarredPageState extends State<StarredPage> {
       // floatting button
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          print("Floating button pressed");
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ComposeEmailPage()),
+          );
         },
         child: const Icon(Icons.add),
         backgroundColor: const Color.fromARGB(255, 89, 89, 89),
