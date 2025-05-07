@@ -16,7 +16,7 @@ class WelcomeScreen extends StatelessWidget {
 
             SizedBox(height: 20),
 
-            Text("Welcome to Email Service", style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
+            Text("Welcome to Email Service", style: TextStyle(color: Color(0xFFF4538A), fontSize: 30, fontWeight: FontWeight.bold)),
 
             SizedBox(height: 40),
 
