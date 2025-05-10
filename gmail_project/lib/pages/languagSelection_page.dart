@@ -49,7 +49,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
             fontSize: 22,
           ),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Color(0xFFF48FB1)),
       ),
       body: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),

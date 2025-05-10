@@ -35,17 +35,26 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Profile',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFFF48FB1)), // Màu nút back
+      ),
+
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
-            children: [
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Icon(Icons.arrow_back, color: Colors.brown),
-                ],
-              ),
+            children: [              
               const SizedBox(height: 20),
               Stack(
                 alignment: Alignment.bottomRight,
