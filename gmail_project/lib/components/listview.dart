@@ -1,5 +1,5 @@
-// MyListView.dart
 import 'package:flutter/material.dart';
+import '../pages/emailDetail_page.dart';
 
 class MyListView extends StatefulWidget {
   const MyListView({super.key});
@@ -36,7 +36,19 @@ class _MyListViewState extends State<MyListView> {
         itemBuilder: (context, index) {
           var user = users[index];
           return ListTile(
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EmailDetailPage(
+                    fullName: user["fullName"],
+                    jobTitle: user["jobTitle"],
+                    imageUrl: 'https://randomuser.me/api/portraits/men/${user['id']}.jpg',
+                  ),
+                ),
+              );
+            },
+
             leading: CircleAvatar(
               backgroundImage: NetworkImage(
                 'https://randomuser.me/api/portraits/men/${user['id']}.jpg',
