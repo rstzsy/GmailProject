@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';  // import AuthService
+import './signin_page.dart';
 
 class SignUpScreen extends StatelessWidget {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+
+  final AuthService _authService = AuthService();  // tạo instance AuthService
 
   @override
   Widget build(BuildContext context) {
@@ -50,8 +54,39 @@ class SignUpScreen extends StatelessWidget {
                       backgroundColor: Color(0xFFF4538A),
                       minimumSize: Size(double.infinity, 50),
                     ),
-                    onPressed: () {
-                      // handle signup logic
+                    onPressed: () async {
+                      String phone = phoneController.text.trim();
+                      String username = usernameController.text.trim();
+                      String password = passwordController.text.trim();
+
+                      if (phone.isEmpty || username.isEmpty || password.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Please fill all fields")),
+                        );
+                        return;
+                      }
+
+                      String? error = await _authService.signUp(
+                        phone: phone,
+                        username: username,
+                        password: password,
+                      );
+
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Error: $error")),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Sign up successful!")),
+                        );
+
+                        // Chuyển sang màn hình đăng nhập
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => SignInScreen()),
+                        );
+                      }
                     },
                     child: Text(
                       "Sign Up",

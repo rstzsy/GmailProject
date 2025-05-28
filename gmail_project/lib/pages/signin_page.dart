@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';  // import AuthService
+import './inbox_page.dart';
 
 class SignInScreen extends StatelessWidget {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+
+  final AuthService _authService = AuthService();  // Khởi tạo AuthService
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +51,35 @@ class SignInScreen extends StatelessWidget {
                       backgroundColor: Color(0xFFF4538A),
                       minimumSize: Size(double.infinity, 50),
                     ),
-                    onPressed: () {
-                      // handle signin logic
+                    onPressed: () async {
+                      String phone = phoneController.text.trim();
+                      String password = passwordController.text.trim();
+
+                      if (phone.isEmpty || password.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Please fill in all fields")),
+                        );
+                        return;
+                      }
+
+                      String? error = await _authService.signIn(
+                        phone: phone,
+                        password: password,
+                      );
+
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Login failed: $error")),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Login successful")),
+                        );
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => MyHomePage()),
+                        );
+                      }
                     },
                     child: Text(
                       "Sign In",
@@ -67,7 +98,6 @@ class SignInScreen extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildTextField(String label, TextEditingController controller, {bool obscureText = false}) {
     return Container(
@@ -91,5 +121,4 @@ class SignInScreen extends StatelessWidget {
       ),
     );
   }
-
 }
