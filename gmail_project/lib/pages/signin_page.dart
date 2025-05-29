@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';  // import AuthService
+import '../services/auth_service.dart';  
 import './inbox_page.dart';
+import '../components/dialog.dart';
+
 
 class SignInScreen extends StatelessWidget {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
-  final AuthService _authService = AuthService();  // Khởi tạo AuthService
+  final AuthService _authService = AuthService();  
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +58,11 @@ class SignInScreen extends StatelessWidget {
                       String password = passwordController.text.trim();
 
                       if (phone.isEmpty || password.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Please fill in all fields")),
+                        CustomDialog.show(
+                          context,
+                          title: "Error",
+                          content: "Please, Fill all fields!",
+                          icon: Icons.error_outline,
                         );
                         return;
                       }
@@ -72,12 +77,18 @@ class SignInScreen extends StatelessWidget {
                           SnackBar(content: Text("Login failed: $error")),
                         );
                       } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Login successful")),
-                        );
-                        Navigator.pushReplacement(
+                        CustomDialog.show(
                           context,
-                          MaterialPageRoute(builder: (context) => MyHomePage()),
+                          title: "Success",
+                          content: "Sign in successful!",
+                          icon: Icons.check_circle_outline,
+                          buttonText: "Continue",
+                          onConfirmed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => MyHomePage()),
+                            );
+                          },
                         );
                       }
                     },

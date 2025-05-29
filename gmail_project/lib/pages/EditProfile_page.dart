@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart'; 
+import '../components/dialog.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -201,9 +202,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       'password': passwordController.text,
                     });
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Profile updated successfully')),
-                    );
+                    CustomDialog.show(
+                          context,
+                          title: "Success",
+                          content: "Update Successful!",
+                          icon: Icons.error_outline,
+                        );
                   }
                 },
                 style: ElevatedButton.styleFrom(
