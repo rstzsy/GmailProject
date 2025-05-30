@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../components/search.dart';
 import '../components/menu_drawer.dart';
 import 'composeEmail_page.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'emailDetail_page.dart';
 import '../services/message_service.dart';
 
@@ -16,12 +15,10 @@ class SentPage extends StatefulWidget {
 
 class _SentPageState extends State<SentPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final DatabaseReference _db = FirebaseDatabase.instance.ref();
+  final MessageService _messageService = MessageService();
 
   List<Map<String, dynamic>> sentEmails = [];
   bool isLoading = true;
-
-  final MessageService _messageService = MessageService();
 
   @override
   void initState() {
@@ -34,12 +31,17 @@ class _SentPageState extends State<SentPage> {
     if (currentUserId == null) return;
 
     final loadedEmails = await _messageService.loadSentMessages(currentUserId);
-
     setState(() {
       sentEmails = loadedEmails;
       isLoading = false;
     });
   }
+
+  Future<void> _toggleStar(String messageId, bool newValue, String senderId) async {
+    await _messageService.updateStarStatus(messageId, newValue, senderId, isSender: true);
+    _loadSentEmails(); 
+  }
+
 
   String _formatDate(String? timestamp) {
     if (timestamp == null || timestamp.isEmpty) return '';
@@ -52,10 +54,8 @@ class _SentPageState extends State<SentPage> {
   }
 
   String _getMonthName(int month) {
-    const months = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
+    const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return months[month];
   }
 
@@ -72,16 +72,14 @@ class _SentPageState extends State<SentPage> {
               color: const Color.fromARGB(255, 55, 54, 54),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color.fromARGB(255, 59, 58, 58), width: 1.5),
-              boxShadow: const [
-                BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 3)),
-              ],
+              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 3))],
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.menu, color: Color.fromARGB(221, 232, 229, 229)),
+                    icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   ),
                   const Expanded(child: Search()),
@@ -114,6 +112,8 @@ class _SentPageState extends State<SentPage> {
                   itemCount: sentEmails.length,
                   itemBuilder: (context, index) {
                     final email = sentEmails[index];
+                    final isStarred = email['is_starred'] == true;
+
                     return ListTile(
                       onTap: () {
                         Navigator.push(
@@ -122,10 +122,9 @@ class _SentPageState extends State<SentPage> {
                             builder: (context) => EmailDetailPage(
                               subject: email['subject'] ?? 'No Subject',
                               body: email['body'] ?? '',
-                              senderName: '', // Sẽ được load từ database
-                              senderTitle: '', // Sẽ được load từ database
-                              senderImageUrl:
-                                  'https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg',
+                              senderName: '',
+                              senderTitle: '',
+                              senderImageUrl: 'https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg',
                               sentAt: email['sent_at'],
                               senderId: email['sender_id'] ?? '',
                               receiverId: email['receiver_id'] ?? '',
@@ -139,10 +138,7 @@ class _SentPageState extends State<SentPage> {
                         ),
                         radius: 25,
                       ),
-                      title: Text(
-                        email["subject"] ?? 'No Subject',
-                        style: const TextStyle(color: Colors.white),
-                      ),
+                      title: Text(email["subject"] ?? 'No Subject', style: const TextStyle(color: Colors.white)),
                       subtitle: Text(
                         email["body"] ?? '(No Body)',
                         style: const TextStyle(color: Colors.white70),
@@ -151,14 +147,20 @@ class _SentPageState extends State<SentPage> {
                       ),
                       trailing: Column(
                         mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
-                            _formatDate(email["sent_at"]),
-                            style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                          ),
+                          Text(_formatDate(email["sent_at"]), style: TextStyle(color: Colors.grey[400], fontSize: 14)),
                           const SizedBox(height: 4),
-                          const Icon(Icons.star_outline, color: Colors.grey),
+                          GestureDetector(
+                            onTap: () => _toggleStar(
+                              email['message_id'],
+                              !(email['is_starred'] ?? false),
+                              email['sender_id'],
+                            ),
+                            child: Icon(
+                              (email['is_starred'] ?? false) ? Icons.star : Icons.star_border,
+                              color: (email['is_starred'] ?? false) ? Colors.yellow : Colors.grey,
+                            ),
+                          ),
                         ],
                       ),
                     );

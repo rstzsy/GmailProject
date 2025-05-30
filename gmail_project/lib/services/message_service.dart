@@ -52,35 +52,45 @@ class MessageService {
 
   /// Lấy danh sách thư trong inbox của user
   Future<List<Map<String, dynamic>>> loadInboxMessages(String currentUserId) async {
-    final recipientsSnapshot = await _db.child('internal_message_recipients').get();
-    final List<String> messageIds = [];
+  final recipientsSnapshot = await _db.child('internal_message_recipients').get();
+  final List<String> messageIds = [];
 
-    for (var msgIdSnap in recipientsSnapshot.children) {
-      // msgIdSnap.key là messageId
-      final recipients = msgIdSnap.children;
-      for (var recipientSnap in recipients) {
-        if (recipientSnap.key == currentUserId) {
-          messageIds.add(msgIdSnap.key!);
-          break;
-        }
+  for (var msgIdSnap in recipientsSnapshot.children) {
+    final recipients = msgIdSnap.children;
+    for (var recipientSnap in recipients) {
+      if (recipientSnap.key == currentUserId) {
+        messageIds.add(msgIdSnap.key!);
+        break;
       }
     }
+  }
 
-    final messages = <Map<String, dynamic>>[];
+  final messages = <Map<String, dynamic>>[];
     for (var messageId in messageIds) {
       final msgSnap = await _db.child('internal_messages').child(messageId).get();
+      final recipSnap = await _db
+          .child('internal_message_recipients')
+          .child(messageId)
+          .child(currentUserId)
+          .get();
+
       if (msgSnap.exists) {
         final data = Map<String, dynamic>.from(msgSnap.value as Map);
         data['message_id'] = messageId;
-        
-        // Thêm thông tin receiver_id cho inbox (chính là currentUserId)
         data['receiver_id'] = currentUserId;
-        
+
+        if (recipSnap.exists) {
+          final recipData = Map<String, dynamic>.from(recipSnap.value as Map);
+          data['is_starred_recip'] = recipData['is_starred_recip'] ?? false;
+        } else {
+          data['is_starred_recip'] = false;
+        }
+
         messages.add(data);
       }
     }
 
-    // Sắp xếp theo thời gian gửi (mới nhất trước)
+    // Sắp xếp theo thời gian gửi
     messages.sort((a, b) {
       final aTime = a['sent_at'] ?? '';
       final bTime = b['sent_at'] ?? '';
@@ -89,6 +99,7 @@ class MessageService {
 
     return messages;
   }
+
 
   /// Lấy thông tin user theo ID
   Future<Map<String, dynamic>?> getUserInfo(String userId) async {
@@ -119,4 +130,32 @@ class MessageService {
     
     return names;
   }
+
+  /// Cập nhật trạng thái đánh dấu sao cho tin nhắn
+  Future<void> updateStarStatus(
+    String messageId,
+    bool isStarred,
+    String userId, {
+    bool isSender = false,
+  }) async {
+    try {
+      if (isSender) {
+        // Cập nhật trạng thái sao chung cho tin nhắn (dành cho sender)
+        await _db.child('internal_messages').child(messageId).update({
+          'is_starred': isStarred,
+        });
+      } else {
+        // Cập nhật trạng thái sao cho từng người nhận trong internal_message_recipients
+        await _db
+            .child('internal_message_recipients')
+            .child(messageId)
+            .child(userId)
+            .update({'is_starred_recip': isStarred});
+      }
+    } catch (e) {
+      print('Error updating star status: $e');
+    }
+  }
+
+
 }

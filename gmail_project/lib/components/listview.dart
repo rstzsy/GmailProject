@@ -29,6 +29,28 @@ class _MyListViewState extends State<MyListView> {
     });
   }
 
+  // Đã bổ sung receiverId và isSender=false (người nhận)
+  Future<void> _toggleStar(String messageId, bool newStatus) async {
+    // Cập nhật local state ngay để UI phản hồi nhanh
+    setState(() {
+      final index = messages.indexWhere((msg) => msg['message_id'] == messageId);
+      if (index != -1) {
+        messages[index]['is_starred_recip'] = newStatus;
+      }
+    });
+
+    // Cập nhật lên Firebase
+    await MessageService().updateStarStatus(
+      messageId,
+      newStatus,
+      widget.currentUserId,
+      isSender: false,
+    );
+
+    // Tải lại danh sách để đồng bộ dữ liệu thật
+    await loadMessages();
+  }
+
   String _formatDate(String? timestamp) {
     if (timestamp == null || timestamp.isEmpty) return '';
     try {
@@ -65,6 +87,9 @@ class _MyListViewState extends State<MyListView> {
         final body = message['body'] ?? '';
         final sentAt = message['sent_at'] ?? '';
         final senderId = message['sender_id'] ?? '';
+        
+        // Lấy trạng thái sao riêng của người nhận trong internal_message_recipients
+        final isStarred = message['is_starred_recip'] == true;
 
         return ListTile(
           onTap: () {
@@ -74,9 +99,10 @@ class _MyListViewState extends State<MyListView> {
                 builder: (context) => EmailDetailPage(
                   subject: subject,
                   body: body,
-                  senderName: '', // bạn có thể load từ DB nếu muốn
+                  senderName: '',
                   senderTitle: '',
-                  senderImageUrl: 'https://randomuser.me/api/portraits/men/${senderId.hashCode % 100}.jpg',
+                  senderImageUrl:
+                      'https://randomuser.me/api/portraits/men/${senderId.hashCode % 100}.jpg',
                   sentAt: sentAt,
                   senderId: senderId,
                   receiverId: widget.currentUserId,
@@ -102,10 +128,17 @@ class _MyListViewState extends State<MyListView> {
             children: [
               Text(
                 _formatDate(sentAt),
-                style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                style: TextStyle(color: Colors.grey[400], fontSize: 14),
               ),
               const SizedBox(height: 4),
-              Icon(Icons.star_border, color: Colors.grey[600]),
+              GestureDetector(
+                onTap: () =>
+                    _toggleStar(message['message_id'], !isStarred),
+                child: Icon(
+                  isStarred ? Icons.star : Icons.star_border,
+                  color: isStarred ? Colors.yellow : Colors.grey,
+                ),
+              ),
             ],
           ),
         );

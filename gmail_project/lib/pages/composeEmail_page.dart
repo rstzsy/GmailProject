@@ -106,7 +106,12 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         .child('internal_message_recipients')
         .child(messageId)
         .child(recipientUid)
-        .set({'recipient_type': 'TO'});
+        .set({'recipient_type': 'TO',
+        'is_draft_recip': false,
+        'is_starred_recip': false,
+        'is_read_recip': false,
+        'is_trashed_recip': false,
+      });
 
     // // Upload file đính kèm lên Firebase Storage (TẠM THỜI BỎ)
     // for (var image in _attachedImages) {
