@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../components/search.dart';
 import '../components/menu_drawer.dart';
 import 'composeEmail_page.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'emailDetail_page.dart';
+import '../services/message_service.dart';
 
 class SentPage extends StatefulWidget {
   const SentPage({super.key});
@@ -12,23 +16,48 @@ class SentPage extends StatefulWidget {
 
 class _SentPageState extends State<SentPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final DatabaseReference _db = FirebaseDatabase.instance.ref();
 
-  final List<Map<String, dynamic>> sentEmails = [
-    // {
-    //   "id": 5,
-    //   "fullName": "David Johnson",
-    //   "jobTitle": "Marketing Lead",
-    //   "recipient": "to: alice@example.com",
-    //   "date": "6 May",
-    // },
-    // {
-    //   "id": 7,
-    //   "fullName": "Emily Clark",
-    //   "jobTitle": "UX Designer",
-    //   "recipient": "to: bob@example.com",
-    //   "date": "5 May",
-    // },
-  ];
+  List<Map<String, dynamic>> sentEmails = [];
+  bool isLoading = true;
+
+  final MessageService _messageService = MessageService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSentEmails();
+  }
+
+  Future<void> _loadSentEmails() async {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == null) return;
+
+    final loadedEmails = await _messageService.loadSentMessages(currentUserId);
+
+    setState(() {
+      sentEmails = loadedEmails;
+      isLoading = false;
+    });
+  }
+
+  String _formatDate(String? timestamp) {
+    if (timestamp == null || timestamp.isEmpty) return '';
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      return "${dateTime.day} ${_getMonthName(dateTime.month)}";
+    } catch (e) {
+      return '';
+    }
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return months[month];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,51 +96,74 @@ class _SentPageState extends State<SentPage> {
           ),
         ),
       ),
-      body: sentEmails.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset('assets/images/empty_sent.png', width: 150, height: 150),
-                  const SizedBox(height: 20),
-                  const Text("No sent emails", style: TextStyle(color: Colors.white, fontSize: 16)),
-                ],
-              ),
-            )
-          : ListView.builder(
-              itemCount: sentEmails.length,
-              itemBuilder: (context, index) {
-                var email = sentEmails[index];
-                return ListTile(
-                  onTap: () {},
-                  leading: CircleAvatar(
-                    backgroundImage: NetworkImage(
-                      'https://randomuser.me/api/portraits/men/${email['id']}.jpg',
-                    ),
-                    radius: 25,
-                  ),
-                  title: Text(
-                    email["recipient"].split('@')[0], 
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(email["jobTitle"], style: const TextStyle(color: Colors.white70)),
-                    ],
-                  ),
-                  trailing: Column(
+      backgroundColor: const Color(0xFF121212),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : sentEmails.isEmpty
+              ? Center(
+                  child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(email["date"], style: TextStyle(color: Colors.grey[400], fontSize: 14)),
-                      const SizedBox(height: 4),
-                      const Icon(Icons.star_outline),
+                      Image.asset('assets/images/empty_sent.png', width: 150, height: 150),
+                      const SizedBox(height: 20),
+                      const Text("No sent emails", style: TextStyle(color: Colors.white, fontSize: 16)),
                     ],
                   ),
-                );
-              },
-            ),
+                )
+              : ListView.builder(
+                  itemCount: sentEmails.length,
+                  itemBuilder: (context, index) {
+                    final email = sentEmails[index];
+                    return ListTile(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EmailDetailPage(
+                              subject: email['subject'] ?? 'No Subject',
+                              body: email['body'] ?? '',
+                              senderName: '', // Sẽ được load từ database
+                              senderTitle: '', // Sẽ được load từ database
+                              senderImageUrl:
+                                  'https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg',
+                              sentAt: email['sent_at'],
+                              senderId: email['sender_id'] ?? '',
+                              receiverId: email['receiver_id'] ?? '',
+                            ),
+                          ),
+                        );
+                      },
+                      leading: CircleAvatar(
+                        backgroundImage: NetworkImage(
+                          'https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg',
+                        ),
+                        radius: 25,
+                      ),
+                      title: Text(
+                        email["subject"] ?? 'No Subject',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      subtitle: Text(
+                        email["body"] ?? '(No Body)',
+                        style: const TextStyle(color: Colors.white70),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            _formatDate(email["sent_at"]),
+                            style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                          ),
+                          const SizedBox(height: 4),
+                          const Icon(Icons.star_outline, color: Colors.grey),
+                        ],
+                      ),
+                    );
+                  },
+                ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.push(
@@ -122,7 +174,6 @@ class _SentPageState extends State<SentPage> {
         child: const Icon(Icons.add),
         backgroundColor: const Color.fromARGB(255, 89, 89, 89),
       ),
-      backgroundColor: const Color(0xFF121212),
     );
   }
 }

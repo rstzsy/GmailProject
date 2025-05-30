@@ -4,6 +4,7 @@ import '../components/menu_drawer.dart';
 import '../components/search.dart';
 import 'profile_page.dart';
 import 'composeEmail_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
@@ -14,6 +15,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +80,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
       ),
-      body: const MyListView(),
+      body: MyListView(currentUserId: currentUserId),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.push(

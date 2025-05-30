@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
-import 'package:gmail_project/pages/inbox_page.dart'; 
-
+import 'package:firebase_database/firebase_database.dart';
 
 class EmailDetailPage extends StatefulWidget {
-  final String fullName;
-  final String jobTitle;
-  final String imageUrl;
+  final String subject;
+  final String body;
+  final String senderName; // Có thể để trống, sẽ load từ database
+  final String senderTitle; // Có thể để trống, sẽ load từ database
+  final String senderImageUrl;
+  final String? sentAt;
+
+  // Thêm senderId và receiverId nếu bạn cần
+  final String? senderId;
+  final String? receiverId;
 
   const EmailDetailPage({
     super.key,
-    required this.fullName,
-    required this.jobTitle,
-    required this.imageUrl,
+    required this.subject,
+    required this.body,
+    required this.senderName,
+    required this.senderTitle,
+    required this.senderImageUrl,
+    this.sentAt,
+    this.senderId,
+    this.receiverId,
   });
 
   @override
@@ -20,6 +31,76 @@ class EmailDetailPage extends StatefulWidget {
 
 class _EmailDetailPageState extends State<EmailDetailPage> {
   bool showContent = true;
+  bool isLoadingUserInfo = true;
+  
+  // Thông tin người dùng được load từ database
+  String displaySenderName = '';
+  String displaySenderTitle = '';
+  String displayReceiverName = '';
+
+  final DatabaseReference _db = FirebaseDatabase.instance.ref();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserInfo();
+  }
+
+  Future<void> _loadUserInfo() async {
+    try {
+      // Load thông tin người gửi
+      if (widget.senderId != null && widget.senderId!.isNotEmpty) {
+        print('Loading sender info for ID: ${widget.senderId}');
+        final senderSnapshot = await _db.child('users/${widget.senderId}').get();
+        if (senderSnapshot.exists) {
+          final senderData = senderSnapshot.value as Map<dynamic, dynamic>;
+          displaySenderName = senderData['username'] ?? senderData['name'] ?? 'Unknown User';
+          displaySenderTitle = senderData['email'] ?? senderData['title'] ?? '';
+          print('Sender loaded: $displaySenderName');
+        } else {
+          print('Sender not found in database');
+        }
+      }
+
+      // Load thông tin người nhận
+      if (widget.receiverId != null && widget.receiverId!.isNotEmpty) {
+        print('Loading receiver info for ID: ${widget.receiverId}');
+        final receiverSnapshot = await _db.child('users/${widget.receiverId}').get();
+        if (receiverSnapshot.exists) {
+          final receiverData = receiverSnapshot.value as Map<dynamic, dynamic>;
+          displayReceiverName = receiverData['username'] ?? receiverData['name'] ?? 'Unknown Receiver';
+          print('Receiver loaded: $displayReceiverName');
+        } else {
+          print('Receiver not found in database');
+          displayReceiverName = 'Unknown Receiver';
+        }
+      } else {
+        print('No receiver ID provided');
+        displayReceiverName = 'No Receiver';
+      }
+
+      // Fallback to widget values if database doesn't have info
+      if (displaySenderName.isEmpty) {
+        displaySenderName = widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
+      }
+      if (displaySenderTitle.isEmpty) {
+        displaySenderTitle = widget.senderTitle;
+      }
+
+    } catch (e) {
+      print('Error loading user info: $e');
+      // Fallback to widget values
+      displaySenderName = widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
+      displaySenderTitle = widget.senderTitle;
+      displayReceiverName = 'Error Loading Receiver';
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingUserInfo = false;
+        });
+      }
+    }
+  }
 
   void toggleContent() {
     setState(() {
@@ -47,10 +128,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
           IconButton(
               icon: const Icon(Icons.mail_outline, color: Colors.white),
               onPressed: () {
-                Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const MyHomePage()),
-                      );
+                Navigator.popUntil(context, (route) => route.isFirst);
               }),
         ],
       ),
@@ -59,9 +137,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'THÔNG BÁO Về việc triển khai cài đặt ứng dụng Công dân số TPHCM',
-              style: TextStyle(
+            Text(
+              widget.subject,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
@@ -74,7 +152,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
-                    backgroundImage: NetworkImage(widget.imageUrl),
+                    backgroundImage: NetworkImage(widget.senderImageUrl),
                     radius: 22,
                   ),
                   const SizedBox(width: 12),
@@ -82,19 +160,57 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.fullName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        // Hàng đầu: Tên người gửi và thời gian gửi
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Hiển thị loading hoặc tên người gửi
+                            Expanded(
+                              child: isLoadingUserInfo
+                                  ? const SizedBox(
+                                      height: 16,
+                                      width: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+                                      ),
+                                    )
+                                  : Text(
+                                      displaySenderName,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                            ),
+                            // Thời gian gửi ở bên phải
+                            if (widget.sentAt != null)
+                              Text(
+                                _formatDate(widget.sentAt!),
+                                style: const TextStyle(
+                                    color: Colors.grey, fontSize: 13),
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          widget.jobTitle,
-                          style: const TextStyle(color: Colors.grey, fontSize: 14),
-                        ),
+                        // Hiển thị thông tin người nhận - luôn hiển thị nếu không đang loading
+                        if (!isLoadingUserInfo)
+                          Text(
+                            displayReceiverName.isNotEmpty 
+                                ? 'To: $displayReceiverName' 
+                                : 'To: Loading...',
+                            style: const TextStyle(color: Colors.grey, fontSize: 14),
+                          ),
+                        // Hiển thị email hoặc title của người gửi
+                        if (!isLoadingUserInfo && displaySenderTitle.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              displaySenderTitle,
+                              style: const TextStyle(color: Colors.grey, fontSize: 13),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -103,23 +219,10 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
             ),
             const SizedBox(height: 24),
             if (showContent)
-              const Text(
-                '''
-Thân gửi sinh viên,
-
-Nhằm triển khai hiệu quả Nghị quyết số 57-NQ/TW ngày 22/12/2024 của Bộ Chính trị về đột phá phát triển khoa học, công nghệ, đổi mới sáng tạo và chuyển đổi số quốc gia; đồng thời thực hiện theo chủ đề năm 2025 của Thành phố Hồ Chí Minh với trọng tâm là công tác chuyển đổi số,
-
-Hưởng ứng phong trào “Hãy trở thành công dân số Thành phố Hồ Chí Minh”,
-
-Phòng Công tác học sinh – sinh viên thông báo đến toàn thể sinh viên thực hiện việc cài đặt và sử dụng ứng dụng Công dân số TPHCM để tiếp cận các tiện ích số và chung tay xây dựng thành phố thông minh, hiện đại.
-
-🗓 Thời gian thực hiện: Từ nay đến hết ngày 11/5/2025.
-👥 Đối tượng: Toàn thể sinh viên đang theo học tại trường.
-📲 Ứng dụng: Công dân số TPHCM (tải trên App Store/Google Play).
-
-Việc cài đặt ứng dụng là hành động thiết thực nhằm nâng cao ý thức công dân số, đồng thời phục vụ tốt hơn cho học tập, sinh hoạt và tiếp cận các dịch vụ công một cách tiện lợi, nhanh chóng.
-                ''',
-                style: TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
+              Text(
+                widget.body,
+                style:
+                    const TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
               ),
           ],
         ),
@@ -129,7 +232,7 @@ Việc cài đặt ứng dụng là hành động thiết thực nhằm nâng ca
           padding: const EdgeInsets.all(12.0),
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFFffcad4),
+              backgroundColor: const Color(0xFFffcad4),
               minimumSize: const Size.fromHeight(48),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -140,18 +243,35 @@ Việc cài đặt ứng dụng là hành động thiết thực nhằm nâng ca
                 const SnackBar(content: Text("Đã nhấn Trả lời")),
               );
             },
-            icon: const Icon(Icons.reply, color: Color(0xFFF4538A), size: 20,),
+            icon: const Icon(Icons.reply, color: Color(0xFFF4538A), size: 20),
             label: const Text(
               "Reply",
               style: TextStyle(
                 fontSize: 20,
                 color: Color(0xFFF4538A),
-                fontWeight: FontWeight.bold
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  String _formatDate(String timestamp) {
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      return "${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year}";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return months[month];
   }
 }
