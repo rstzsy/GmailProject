@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
-import 'pages/inbox_page.dart'; 
+//import 'pages/inbox_page.dart'; 
+import './pages/welcome_page.dart';
+import 'package:firebase_core/firebase_core.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 
@@ -23,7 +27,8 @@ class MyApp extends StatelessWidget {
               fontFamily: 'Baloo2',
             ),
       ),
-      home: const MyHomePage(), 
+      //home: const MyHomePage(), 
+      home: WelcomeScreen(),
     );
   }
 }

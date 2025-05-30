@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
+import './signin_page.dart';
+import '../components/dialog.dart';
 
 class SignUpScreen extends StatelessWidget {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController usernameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+
+  final AuthService _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +20,7 @@ class SignUpScreen extends StatelessWidget {
           Align(
             alignment: Alignment.center,
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 400), 
+              padding: const EdgeInsets.only(bottom: 400),
               child: Image.asset(
                 'assets/images/signup.png',
                 height: 500,
@@ -23,17 +28,15 @@ class SignUpScreen extends StatelessWidget {
               ),
             ),
           ),
-
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
-              height: 450, 
+              height: 450,
               padding: EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Color(0xFFffcad4),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
               ),
-
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -44,21 +47,58 @@ class SignUpScreen extends StatelessWidget {
                   SizedBox(height: 20),
                   _buildTextField("Password", passwordController, obscureText: true),
                   SizedBox(height: 30),
-
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color(0xFFF4538A),
                       minimumSize: Size(double.infinity, 50),
                     ),
-                    onPressed: () {
-                      // handle signup logic
+                    onPressed: () async {
+                      String phone = phoneController.text.trim();
+                      String username = usernameController.text.trim();
+                      String password = passwordController.text.trim();
+
+                      if (phone.isEmpty || username.isEmpty || password.isEmpty) {
+                        CustomDialog.show(
+                          context,
+                          title: "Error",
+                          content: "Please, Fill all fields!",
+                          icon: Icons.error_outline,
+                        );
+                        return;
+                      }
+
+                      String? error = await _authService.signUp(
+                        phone: phone,
+                        username: username,
+                        password: password,
+                      );
+
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Error: $error")),
+                        );
+                      } else {
+                        CustomDialog.show(
+                          context,
+                          title: "Success",
+                          content: "Sign up successful!",
+                          icon: Icons.check_circle_outline,
+                          buttonText: "Continue",
+                          onConfirmed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => SignInScreen()),
+                            );
+                          },
+                        );
+                      }
                     },
                     child: Text(
                       "Sign Up",
                       style: TextStyle(
                         color: Colors.black,
                         fontWeight: FontWeight.bold,
-                        fontSize: 20
+                        fontSize: 20,
                       ),
                     ),
                   ),
@@ -71,12 +111,11 @@ class SignUpScreen extends StatelessWidget {
     );
   }
 
-
   Widget _buildTextField(String label, TextEditingController controller, {bool obscureText = false}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white, 
-        borderRadius: BorderRadius.circular(20), 
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: TextField(
         controller: controller,
@@ -85,14 +124,11 @@ class SignUpScreen extends StatelessWidget {
           labelText: label,
           labelStyle: TextStyle(color: Colors.grey[700]),
           suffixIcon: obscureText ? Icon(Icons.visibility_off) : null,
-          border: InputBorder.none, 
+          border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(horizontal: 15, vertical: 10),
         ),
-        style: TextStyle(
-          color: Colors.black
-        ),
+        style: TextStyle(color: Colors.black),
       ),
     );
   }
-
 }

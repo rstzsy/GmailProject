@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';  
+import './inbox_page.dart';
+import '../components/dialog.dart';
+
 
 class SignInScreen extends StatelessWidget {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+
+  final AuthService _authService = AuthService();  
 
   @override
   Widget build(BuildContext context) {
@@ -47,8 +53,44 @@ class SignInScreen extends StatelessWidget {
                       backgroundColor: Color(0xFFF4538A),
                       minimumSize: Size(double.infinity, 50),
                     ),
-                    onPressed: () {
-                      // handle signin logic
+                    onPressed: () async {
+                      String phone = phoneController.text.trim();
+                      String password = passwordController.text.trim();
+
+                      if (phone.isEmpty || password.isEmpty) {
+                        CustomDialog.show(
+                          context,
+                          title: "Error",
+                          content: "Please, Fill all fields!",
+                          icon: Icons.error_outline,
+                        );
+                        return;
+                      }
+
+                      String? error = await _authService.signIn(
+                        phone: phone,
+                        password: password,
+                      );
+
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Login failed: $error")),
+                        );
+                      } else {
+                        CustomDialog.show(
+                          context,
+                          title: "Success",
+                          content: "Sign in successful!",
+                          icon: Icons.check_circle_outline,
+                          buttonText: "Continue",
+                          onConfirmed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => MyHomePage()),
+                            );
+                          },
+                        );
+                      }
                     },
                     child: Text(
                       "Sign In",
@@ -67,7 +109,6 @@ class SignInScreen extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildTextField(String label, TextEditingController controller, {bool obscureText = false}) {
     return Container(
@@ -91,5 +132,4 @@ class SignInScreen extends StatelessWidget {
       ),
     );
   }
-
 }
