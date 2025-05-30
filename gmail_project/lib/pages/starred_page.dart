@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../components/search.dart';
 import '../components/menu_drawer.dart';
+import '../services/message_service.dart';
 import 'composeEmail_page.dart';
+import 'emailDetail_page.dart';
 
 class StarredPage extends StatefulWidget {
   const StarredPage({super.key});
@@ -12,19 +15,64 @@ class StarredPage extends StatefulWidget {
 
 class _StarredPageState extends State<StarredPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final MessageService _messageService = MessageService();
 
-  final List<Map<String, dynamic>> users = [
-    // {"id": 1, "fullName": "John Doe", "jobTitle": "Software Engineer"},
-    // {"id": 2, "fullName": "Jane Smith", "jobTitle": "Product Manager"},
-    
-  ];
+  List<Map<String, dynamic>> starredEmails = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStarredEmails();
+  }
+
+  Future<void> _loadStarredEmails() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    final sentEmails = await _messageService.loadSentMessages(userId);
+    final inboxEmails = await _messageService.loadInboxMessages(userId);
+
+    final allEmails = [...sentEmails, ...inboxEmails];
+
+    final starred = allEmails.where((e) =>
+      e['is_starred'] == true || e['is_starred_recip'] == true
+    ).toList();
+
+    setState(() {
+      starredEmails = starred;
+      isLoading = false;
+    });
+  }
+
+  Future<void> _toggleStar(
+    String messageId, bool newStatus, String userId, bool isSender) async {
+    await _messageService.updateStarStatus(
+      messageId,
+      newStatus,
+      userId,
+      isSender: isSender,
+    );
+    await _loadStarredEmails(); 
+  }
+
+
+  String _formatDate(String? timestamp) {
+    if (timestamp == null || timestamp.isEmpty) return '';
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      return "${dateTime.day}/${dateTime.month}";
+    } catch (e) {
+      return '';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       key: _scaffoldKey,
-
-      //--------search, drawer-----------
       drawer: MenuDrawer(),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(65),
@@ -41,7 +89,7 @@ class _StarredPageState extends State<StarredPage> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.menu, color: Color.fromARGB(221, 232, 229, 229)),
+                    icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   ),
                   const Expanded(child: Search()),
@@ -56,56 +104,80 @@ class _StarredPageState extends State<StarredPage> {
           ),
         ),
       ),
-      //---------------------------------------
-
-      // -----neu khong co du lieu se hien thi hinh anh mac dinh-----
-      body: users.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset('assets/images/empty_starred.png', width: 150, height: 150),
-                  const SizedBox(height: 20),
-                  const Text("Nothing in starred folder", style: TextStyle(color: Colors.white, fontSize: 16)),
-                ],
-              ),
-            )
-            //--------------------
-
-          : ListView.builder(
-              itemCount: users.length,
-              itemBuilder: (context, index) {
-                var user = users[index];
-                return ListTile(
-                  onTap: () {},
-                  leading: CircleAvatar(
-                    backgroundImage: NetworkImage(
-                      'https://randomuser.me/api/portraits/men/${user['id']}.jpg',
-                    ),
-                    radius: 25,
-                  ),
-                  title: Text(user["fullName"].toString(), style: const TextStyle(color: Colors.white)),
-                  subtitle: Text(user["jobTitle"].toString(), style: const TextStyle(color: Colors.white70)),
-                  trailing: Column(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : starredEmails.isEmpty
+              ? Center(
+                  child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text("7 Mar", style: TextStyle(color: Colors.grey[400], fontSize: 14)),
-                      const SizedBox(height: 4),
-                      const Icon(Icons.star, color: Colors.yellow), // tô vàng ngôi sao
+                      Image.asset('assets/images/empty_starred.png', width: 150, height: 150),
+                      const SizedBox(height: 20),
+                      const Text("Nothing in starred folder", style: TextStyle(color: Colors.white, fontSize: 16)),
                     ],
                   ),
-                );
-              },
-            ),
+                )
+              : ListView.builder(
+                  itemCount: starredEmails.length,
+                  itemBuilder: (context, index) {
+                    final email = starredEmails[index];
+                    final isSentByMe = email['sender_id'] == currentUserId;
+                    final isStarred = isSentByMe
+                        ? (email['is_starred'] ?? false)
+                        : (email['is_starred_recip'] ?? false);
 
-      // floatting button
+                    return ListTile(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EmailDetailPage(
+                              subject: email['subject'] ?? '',
+                              body: email['body'] ?? '',
+                              senderName: '',
+                              senderTitle: '',
+                              senderImageUrl: 'https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg',
+                              sentAt: email['sent_at'],
+                              senderId: email['sender_id'],
+                              receiverId: email['receiver_id'],
+                            ),
+                          ),
+                        );
+                      },
+                      leading: CircleAvatar(
+                        backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg'),
+                        radius: 25,
+                      ),
+                      title: Text(email["subject"] ?? '', style: const TextStyle(color: Colors.white)),
+                      subtitle: Text(
+                        email["body"] ?? '',
+                        style: const TextStyle(color: Colors.white70),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_formatDate(email["sent_at"]), style: TextStyle(color: Colors.grey[400], fontSize: 14)),
+                          const SizedBox(height: 4),
+                          GestureDetector(
+                            onTap: () {
+                              final userId = isSentByMe ? email['sender_id'] : email['receiver_id'];
+                              _toggleStar(email['message_id'], !isStarred, userId, isSentByMe);
+                            },
+                            child: Icon(
+                              isStarred ? Icons.star : Icons.star_border,
+                              color: isStarred ? Colors.yellow : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const ComposeEmailPage()),
-          );
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const ComposeEmailPage()));
         },
         child: const Icon(Icons.add),
         backgroundColor: const Color.fromARGB(255, 89, 89, 89),
