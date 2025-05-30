@@ -106,7 +106,8 @@ class _MyListViewState extends State<MyListView> {
                   sentAt: sentAt,
                   senderId: senderId,
                   receiverId: widget.currentUserId,
-                ),
+                  messageId: message['message_id'] ?? '',
+                )
               ),
             );
           },

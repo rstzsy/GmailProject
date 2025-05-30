@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/message_service.dart';
 
 class EmailDetailPage extends StatefulWidget {
   final String subject;
   final String body;
-  final String senderName; // Có thể để trống, sẽ load từ database
-  final String senderTitle; // Có thể để trống, sẽ load từ database
+  final String senderName;
+  final String senderTitle;
   final String senderImageUrl;
   final String? sentAt;
-
-  // Thêm senderId và receiverId nếu bạn cần
   final String? senderId;
   final String? receiverId;
+  final String? messageId;
 
   const EmailDetailPage({
     super.key,
@@ -23,6 +24,7 @@ class EmailDetailPage extends StatefulWidget {
     this.sentAt,
     this.senderId,
     this.receiverId,
+    this.messageId,
   });
 
   @override
@@ -32,13 +34,12 @@ class EmailDetailPage extends StatefulWidget {
 class _EmailDetailPageState extends State<EmailDetailPage> {
   bool showContent = true;
   bool isLoadingUserInfo = true;
-  
-  // Thông tin người dùng được load từ database
   String displaySenderName = '';
   String displaySenderTitle = '';
   String displayReceiverName = '';
 
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
+  final MessageService _messageService = MessageService();
 
   @override
   void initState() {
@@ -48,48 +49,34 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
 
   Future<void> _loadUserInfo() async {
     try {
-      // Load thông tin người gửi
       if (widget.senderId != null && widget.senderId!.isNotEmpty) {
-        print('Loading sender info for ID: ${widget.senderId}');
         final senderSnapshot = await _db.child('users/${widget.senderId}').get();
         if (senderSnapshot.exists) {
           final senderData = senderSnapshot.value as Map<dynamic, dynamic>;
           displaySenderName = senderData['username'] ?? senderData['name'] ?? 'Unknown User';
           displaySenderTitle = senderData['email'] ?? senderData['title'] ?? '';
-          print('Sender loaded: $displaySenderName');
-        } else {
-          print('Sender not found in database');
         }
       }
 
-      // Load thông tin người nhận
       if (widget.receiverId != null && widget.receiverId!.isNotEmpty) {
-        print('Loading receiver info for ID: ${widget.receiverId}');
         final receiverSnapshot = await _db.child('users/${widget.receiverId}').get();
         if (receiverSnapshot.exists) {
           final receiverData = receiverSnapshot.value as Map<dynamic, dynamic>;
           displayReceiverName = receiverData['username'] ?? receiverData['name'] ?? 'Unknown Receiver';
-          print('Receiver loaded: $displayReceiverName');
         } else {
-          print('Receiver not found in database');
           displayReceiverName = 'Unknown Receiver';
         }
       } else {
-        print('No receiver ID provided');
         displayReceiverName = 'No Receiver';
       }
 
-      // Fallback to widget values if database doesn't have info
       if (displaySenderName.isEmpty) {
         displaySenderName = widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
       }
       if (displaySenderTitle.isEmpty) {
         displaySenderTitle = widget.senderTitle;
       }
-
     } catch (e) {
-      print('Error loading user info: $e');
-      // Fallback to widget values
       displaySenderName = widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
       displaySenderTitle = widget.senderTitle;
       displayReceiverName = 'Error Loading Receiver';
@@ -108,6 +95,73 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     });
   }
 
+  Future<void> _handleDelete() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Xác nhận xoá"),
+        content: const Text("Bạn có chắc muốn chuyển thư này vào thùng rác không?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Hủy"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Đồng ý"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        if (widget.messageId != null) {
+          // Lấy current user ID từ Firebase Auth
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+          
+          if (currentUserId == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Không thể xác định người dùng hiện tại')),
+            );
+            return;
+          }
+
+          // Kiểm tra user hiện tại là sender hay receiver
+          final isSender = currentUserId == widget.senderId;
+          
+          print('Debug - Current User: $currentUserId');
+          print('Debug - Sender ID: ${widget.senderId}');
+          print('Debug - Receiver ID: ${widget.receiverId}');
+          print('Debug - Is Sender: $isSender');
+          print('Debug - Message ID: ${widget.messageId}');
+
+          await _messageService.moveMessageToTrash(
+            widget.messageId!,
+            currentUserId,
+            isSender: isSender,
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Thư đã được chuyển vào thùng rác')),
+            );
+            Navigator.pop(context, true);
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Thiếu thông tin để xoá thư')),
+          );
+        }
+      } catch (e) {
+        print('Error deleting message: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi khi xoá thư: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -117,19 +171,17 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.white),
-              onPressed: () {}),
+            icon: const Icon(Icons.delete_outline, color: Colors.white),
+            onPressed: _handleDelete,
+          ),
           IconButton(
-              icon: const Icon(Icons.mail_outline, color: Colors.white),
-              onPressed: () {
-                Navigator.popUntil(context, (route) => route.isFirst);
-              }),
+            icon: const Icon(Icons.mail_outline, color: Colors.white),
+            onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -160,11 +212,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Hàng đầu: Tên người gửi và thời gian gửi
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Hiển thị loading hoặc tên người gửi
                             Expanded(
                               child: isLoadingUserInfo
                                   ? const SizedBox(
@@ -184,25 +234,21 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                                       ),
                                     ),
                             ),
-                            // Thời gian gửi ở bên phải
                             if (widget.sentAt != null)
                               Text(
                                 _formatDate(widget.sentAt!),
-                                style: const TextStyle(
-                                    color: Colors.grey, fontSize: 13),
+                                style: const TextStyle(color: Colors.grey, fontSize: 13),
                               ),
                           ],
                         ),
                         const SizedBox(height: 4),
-                        // Hiển thị thông tin người nhận - luôn hiển thị nếu không đang loading
                         if (!isLoadingUserInfo)
                           Text(
-                            displayReceiverName.isNotEmpty 
-                                ? 'To: $displayReceiverName' 
+                            displayReceiverName.isNotEmpty
+                                ? 'To: $displayReceiverName'
                                 : 'To: Loading...',
                             style: const TextStyle(color: Colors.grey, fontSize: 14),
                           ),
-                        // Hiển thị email hoặc title của người gửi
                         if (!isLoadingUserInfo && displaySenderTitle.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
@@ -221,8 +267,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
             if (showContent)
               Text(
                 widget.body,
-                style:
-                    const TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
+                style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
               ),
           ],
         ),
