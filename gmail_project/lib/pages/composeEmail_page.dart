@@ -1,6 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import '../components/dialog.dart';
+
+// import 'package:firebase_storage/firebase_storage.dart'; 
 
 class ComposeEmailPage extends StatefulWidget {
   const ComposeEmailPage({super.key});
@@ -10,13 +16,33 @@ class ComposeEmailPage extends StatefulWidget {
 }
 
 class _ComposeEmailPageState extends State<ComposeEmailPage> {
-  final TextEditingController fromController = TextEditingController(text: 'user@example.com');
+  final TextEditingController fromController = TextEditingController();
   final TextEditingController toController = TextEditingController();
   final TextEditingController subjectController = TextEditingController();
   final TextEditingController bodyController = TextEditingController();
 
   final ImagePicker _picker = ImagePicker();
   List<XFile> _attachedImages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserName();
+  }
+
+  Future<void> _loadCurrentUserName() async {
+    final auth = FirebaseAuth.instance;
+    final database = FirebaseDatabase.instance.ref();
+
+    final currentUser = auth.currentUser;
+    if (currentUser != null) {
+      final userSnapshot = await database.child('users').child(currentUser.uid).get();
+      final username = userSnapshot.child('username').value?.toString() ?? currentUser.email!;
+      setState(() {
+        fromController.text = username;
+      });
+    }
+  }
 
   Future<void> _pickImages() async {
     final List<XFile>? pickedImages = await _picker.pickMultiImage();
@@ -25,6 +51,88 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         _attachedImages = pickedImages;
       });
     }
+  }
+
+  Future<void> _sendEmail() async {
+    final database = FirebaseDatabase.instance.ref();
+    // final storage = FirebaseStorage.instance; // Tạm thời không dùng
+    final auth = FirebaseAuth.instance;
+
+    final fromEmail = fromController.text.trim();
+    final toPhone = toController.text.trim();
+    final subject = subjectController.text.trim();
+    final body = bodyController.text.trim();
+    final timestamp = DateTime.now().toIso8601String();
+
+    final fromUid = auth.currentUser?.uid ?? 'anonymous';
+
+    // Tìm UID người nhận theo số điện thoại
+    final usersSnapshot = await database.child('users').get();
+    String? recipientUid;
+    for (var user in usersSnapshot.children) {
+      if (user.child('phone_number').value == toPhone) {
+        recipientUid = user.key;
+        break;
+      }
+    }
+
+    if (recipientUid == null) {
+      CustomDialog.show(
+        context,
+        title: "Error",
+        content: "Recipient does not exist!",
+        icon: Icons.error_outline,
+      );
+      return;
+    }
+
+    // Gửi thư
+    final messageRef = database.child('internal_messages').push();
+    final messageId = messageRef.key!;
+
+    await messageRef.set({
+      'sender_id': fromUid,
+      'subject': subject,
+      'body': body,
+      'sent_at': timestamp,
+      'is_draft': false,
+      'is_starred': false,
+      'is_read': false,
+      'is_trashed': false,
+    });
+
+    // Lưu người nhận
+    await database
+        .child('internal_message_recipients')
+        .child(messageId)
+        .child(recipientUid)
+        .set({'recipient_type': 'TO'});
+
+    // // Upload file đính kèm lên Firebase Storage (TẠM THỜI BỎ)
+    // for (var image in _attachedImages) {
+    //   final fileName = image.name;
+    //   final file = File(image.path);
+    //   final storageRef = storage.ref().child('attachments/$messageId/$fileName');
+    //   final uploadTask = await storageRef.putFile(file);
+    //   final downloadUrl = await storageRef.getDownloadURL();
+
+    //   await database.child('attachments').child(messageId).push().set({
+    //     'file_path': downloadUrl,
+    //   });
+    // }
+
+    // Xóa form sau khi gửi
+    toController.clear();
+    subjectController.clear();
+    bodyController.clear();
+    setState(() => _attachedImages.clear());
+
+    CustomDialog.show(
+      context,
+      title: "Success",
+      content: "Send mail successfully!",
+      icon: Icons.check_circle_outline,
+    );
   }
 
   @override
@@ -54,11 +162,12 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                 ),
               ),
               style: const TextStyle(color: Colors.white),
+              readOnly: true,
             ),
             TextField(
               controller: toController,
               decoration: const InputDecoration(
-                labelText: 'To',
+                labelText: 'To (Phone Number)',
                 labelStyle: TextStyle(color: Colors.white),
                 focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: Colors.white),
@@ -89,7 +198,6 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                 maxLines: null,
               ),
             ),
-
             if (_attachedImages.isNotEmpty)
               SizedBox(
                 height: 100,
@@ -109,7 +217,6 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                   },
                 ),
               ),
-
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -130,17 +237,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      print('Từ: ${fromController.text}');
-                      print('Gửi đến: ${toController.text}');
-                      print('Chủ đề: ${subjectController.text}');
-                      print('Nội dung: ${bodyController.text}');
-                      if (_attachedImages.isNotEmpty) {
-                        for (var image in _attachedImages) {
-                          print('Ảnh đính kèm: ${image.path}');
-                        }
-                      }
-                    },
+                    onPressed: _sendEmail,
                     icon: const Icon(Icons.send, color: Color(0xFFF4538A)),
                     label: const Text(
                       'Send',
