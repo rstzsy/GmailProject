@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../components/menu_drawer.dart';
 import '../components/search.dart';
 import '../services/message_service.dart';
+import 'emailDetail_page.dart';
 
 class TrashPage extends StatefulWidget {
   const TrashPage({super.key});
@@ -215,7 +216,23 @@ class _TrashPageState extends State<TrashPage> {
                             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             child: ListTile(
                               onTap: () {
-                                // Navigation đến trang chi tiết nếu cần
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    settings: RouteSettings(name: '/trashDetail'),
+                                    builder: (context) => EmailDetailPage(
+                                      subject: email['subject'] ?? 'No Subject',
+                                      body: email['body'] ?? '',
+                                      senderName: '',
+                                      senderTitle: '',
+                                      senderImageUrl: 'https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg',
+                                      sentAt: email['sent_at'],
+                                      senderId: email['sender_id'] ?? '',
+                                      receiverId: email['receiver_id'] ?? '',
+                                      messageId: email['message_id'] ?? '',
+                                    ),
+                                  ),
+                                );
                               },
                               leading: Icon(
                                 isSentByMe ? Icons.send : Icons.inbox,

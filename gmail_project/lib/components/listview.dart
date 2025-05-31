@@ -92,8 +92,8 @@ class _MyListViewState extends State<MyListView> {
         final isStarred = message['is_starred_recip'] == true;
 
         return ListTile(
-          onTap: () {
-            Navigator.push(
+          onTap: () async {
+            final result = await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => EmailDetailPage(
@@ -110,6 +110,10 @@ class _MyListViewState extends State<MyListView> {
                 )
               ),
             );
+
+            if (result == true) {
+              loadMessages(); 
+            }
           },
           leading: CircleAvatar(
             backgroundImage: NetworkImage(

@@ -38,6 +38,8 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   String displaySenderTitle = '';
   String displayReceiverName = '';
 
+  bool isTrashDetail = false;
+
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
   final MessageService _messageService = MessageService();
 
@@ -45,6 +47,16 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   void initState() {
     super.initState();
     _loadUserInfo();
+
+    // Kiểm tra route name để xác định có phải đang xem thư trong thùng rác không
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final routeName = ModalRoute.of(context)?.settings.name;
+      if (routeName == '/trashDetail') {
+        setState(() {
+          isTrashDetail = true;
+        });
+      }
+    });
   }
 
   Future<void> _loadUserInfo() async {
@@ -174,10 +186,16 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.white),
-            onPressed: _handleDelete,
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.delete_outline, color: Colors.white),
+          //   onPressed: _handleDelete,
+          // ),
+          if (!isTrashDetail)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.white),
+              onPressed: _handleDelete,
+            ),
+      
           IconButton(
             icon: const Icon(Icons.mail_outline, color: Colors.white),
             onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),

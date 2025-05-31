@@ -127,8 +127,8 @@ class _StarredPageState extends State<StarredPage> {
                         : (email['is_starred_recip'] ?? false);
 
                     return ListTile(
-                      onTap: () {
-                        Navigator.push(
+                      onTap: () async {
+                        final result = await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => EmailDetailPage(
@@ -140,9 +140,14 @@ class _StarredPageState extends State<StarredPage> {
                               sentAt: email['sent_at'],
                               senderId: email['sender_id'],
                               receiverId: email['receiver_id'],
+                              messageId: email['message_id'] ?? '',
                             ),
                           ),
                         );
+
+                        if (result == true) {
+                          _loadStarredEmails(); 
+                        }
                       },
                       leading: CircleAvatar(
                         backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg'),
