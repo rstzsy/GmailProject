@@ -17,8 +17,11 @@ class _SentPageState extends State<SentPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final MessageService _messageService = MessageService();
 
-  List<Map<String, dynamic>> sentEmails = [];
+  List<Map<String, dynamic>> allSentEmails = [];
+  List<Map<String, dynamic>> filteredEmails = [];
   bool isLoading = true;
+  String searchQuery = '';
+  DateTime? selectedDate;
 
   @override
   void initState() {
@@ -32,16 +35,55 @@ class _SentPageState extends State<SentPage> {
 
     final loadedEmails = await _messageService.loadSentMessages(currentUserId);
     setState(() {
-      sentEmails = loadedEmails;
+      allSentEmails = loadedEmails;
+      _applyFilters();
       isLoading = false;
+    });
+  }
+
+  void _applyFilters() {
+    final query = searchQuery.toLowerCase();
+    setState(() {
+      filteredEmails = allSentEmails.where((email) {
+        final subject = (email['subject'] ?? '').toString().toLowerCase();
+        final body = (email['body'] ?? '').toString().toLowerCase();
+        final sentAt = email['sent_at'];
+        bool matchesSearch = subject.contains(query) || body.contains(query);
+        bool matchesDate = true;
+        if (selectedDate != null && sentAt != null) {
+          final date = DateTime.tryParse(sentAt);
+          matchesDate = date != null &&
+              date.year == selectedDate!.year &&
+              date.month == selectedDate!.month &&
+              date.day == selectedDate!.day;
+        }
+        return matchesSearch && matchesDate;
+      }).toList();
     });
   }
 
   Future<void> _toggleStar(String messageId, bool newValue, String senderId) async {
     await _messageService.updateStarStatus(messageId, newValue, senderId, isSender: true);
-    _loadSentEmails(); 
+    _loadSentEmails();
   }
 
+  void _onSearchChanged(String value) {
+    searchQuery = value;
+    _applyFilters();
+  }
+
+  void _onDateFilterTap() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (pickedDate != null) {
+      selectedDate = pickedDate;
+      _applyFilters();
+    }
+  }
 
   String _formatDate(String? timestamp) {
     if (timestamp == null || timestamp.isEmpty) return '';
@@ -82,7 +124,24 @@ class _SentPageState extends State<SentPage> {
                     icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   ),
-                  const Expanded(child: Search()),
+                  Expanded(
+                    child: Search(
+                      onChanged: _onSearchChanged,
+                      onDateFilterTap: _onDateFilterTap,
+                    ),
+                  ),
+                  // Nút Clear filter ngày nếu đang có filter
+                  if (selectedDate != null)
+                    IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.white),
+                      tooltip: 'Clear date filter',
+                      onPressed: () {
+                        setState(() {
+                          selectedDate = null;
+                          _applyFilters();
+                        });
+                      },
+                    ),
                   const SizedBox(width: 10),
                   const CircleAvatar(
                     backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/2.jpg'),
@@ -97,21 +156,14 @@ class _SentPageState extends State<SentPage> {
       backgroundColor: const Color(0xFF121212),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : sentEmails.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Image.asset('assets/images/empty_sent.png', width: 150, height: 150),
-                      const SizedBox(height: 20),
-                      const Text("No sent emails", style: TextStyle(color: Colors.white, fontSize: 16)),
-                    ],
-                  ),
+          : filteredEmails.isEmpty
+              ? const Center(
+                  child: Text("No sent emails", style: TextStyle(color: Colors.white)),
                 )
               : ListView.builder(
-                  itemCount: sentEmails.length,
+                  itemCount: filteredEmails.length,
                   itemBuilder: (context, index) {
-                    final email = sentEmails[index];
+                    final email = filteredEmails[index];
                     final isStarred = email['is_starred'] == true;
 
                     return ListTile(
@@ -134,7 +186,7 @@ class _SentPageState extends State<SentPage> {
                         );
 
                         if (result == true) {
-                          _loadSentEmails(); 
+                          _loadSentEmails();
                         }
                       },
                       leading: CircleAvatar(
@@ -158,12 +210,12 @@ class _SentPageState extends State<SentPage> {
                           GestureDetector(
                             onTap: () => _toggleStar(
                               email['message_id'],
-                              !(email['is_starred'] ?? false),
+                              !isStarred,
                               email['sender_id'],
                             ),
                             child: Icon(
-                              (email['is_starred'] ?? false) ? Icons.star : Icons.star_border,
-                              color: (email['is_starred'] ?? false) ? Colors.yellow : Colors.grey,
+                              isStarred ? Icons.star : Icons.star_border,
+                              color: isStarred ? Colors.yellow : Colors.grey,
                             ),
                           ),
                         ],

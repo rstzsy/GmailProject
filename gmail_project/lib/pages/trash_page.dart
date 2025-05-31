@@ -19,6 +19,10 @@ class _TrashPageState extends State<TrashPage> {
   List<Map<String, dynamic>> trashEmails = [];
   bool isLoading = true;
 
+  // Biến cho tìm kiếm và lọc ngày
+  String _searchQuery = '';
+  DateTime? _filterDate;
+
   @override
   void initState() {
     super.initState();
@@ -34,7 +38,6 @@ class _TrashPageState extends State<TrashPage> {
     });
 
     try {
-      // Sử dụng method mới để load tin nhắn đã trash
       final trashedMessages = await _messageService.loadAllTrashedMessages(userId);
 
       setState(() {
@@ -73,7 +76,6 @@ class _TrashPageState extends State<TrashPage> {
         isSender: isSentByMe,
       );
 
-      // Refresh danh sách
       _loadTrashedEmails();
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -93,7 +95,6 @@ class _TrashPageState extends State<TrashPage> {
     final messageId = email['message_id'];
     final isSentByMe = email['sender_id'] == currentUserId;
 
-    // Hiển thị dialog xác nhận
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -120,7 +121,6 @@ class _TrashPageState extends State<TrashPage> {
           isSender: isSentByMe,
         );
 
-        // Refresh danh sách
         _loadTrashedEmails();
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -132,6 +132,61 @@ class _TrashPageState extends State<TrashPage> {
         );
       }
     }
+  }
+
+  // Hàm chọn ngày lọc
+  Future<void> _pickFilterDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _filterDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: Colors.blue,
+              onPrimary: Colors.white,
+              surface: Colors.grey[900]!,
+              onSurface: Colors.white,
+            ),
+            dialogBackgroundColor: Colors.grey[850],
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _filterDate = picked;
+      });
+    }
+  }
+
+  // Danh sách email đã lọc theo tìm kiếm và ngày
+  List<Map<String, dynamic>> get _filteredEmails {
+    return trashEmails.where((email) {
+      final subject = (email['subject'] ?? '').toString().toLowerCase();
+      final body = (email['body'] ?? '').toString().toLowerCase();
+      final searchLower = _searchQuery.toLowerCase();
+
+      final matchesSearch = subject.contains(searchLower) || body.contains(searchLower);
+
+      bool matchesDate = true;
+      if (_filterDate != null && email['sent_at'] != null) {
+        try {
+          final emailDate = DateTime.parse(email['sent_at']);
+          matchesDate = emailDate.year == _filterDate!.year &&
+              emailDate.month == _filterDate!.month &&
+              emailDate.day == _filterDate!.day;
+        } catch (_) {
+          matchesDate = true;
+        }
+      }
+
+      return matchesSearch && matchesDate;
+    }).toList();
   }
 
   @override
@@ -159,7 +214,59 @@ class _TrashPageState extends State<TrashPage> {
                     icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   ),
-                  const Expanded(child: Search()),
+
+                  // Widget Search có icon lịch sẵn, dùng onDateFilterTap để mở date picker
+                  Expanded(
+                    child: Search(
+                      onChanged: (query) {
+                        setState(() {
+                          _searchQuery = query;
+                        });
+                      },
+                      onDateFilterTap: () async {
+                        // Mở date picker
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _filterDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime.now(),
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: ColorScheme.dark(
+                                  primary: Colors.blue,
+                                  onPrimary: Colors.white,
+                                  surface: Colors.grey[900]!,
+                                  onSurface: Colors.white,
+                                ),
+                                dialogBackgroundColor: Colors.grey[850],
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+
+                        if (picked != null) {
+                          setState(() {
+                            _filterDate = picked;
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                  
+                  // Nút clear filter ngày nếu đang có filter
+                  if (_filterDate != null)
+                    IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.white),
+                      onPressed: () {
+                        setState(() {
+                          _filterDate = null;
+                        });
+                      },
+                      tooltip: 'Clear date filter',
+                    ),
+
                   const SizedBox(width: 10),
                   const CircleAvatar(
                     backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/2.jpg'),
@@ -171,10 +278,11 @@ class _TrashPageState extends State<TrashPage> {
           ),
         ),
       ),
+
       backgroundColor: const Color(0xFF121212),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : trashEmails.isEmpty
+          : _filteredEmails.isEmpty
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -187,7 +295,6 @@ class _TrashPageState extends State<TrashPage> {
                 )
               : Column(
                   children: [
-                    // Header với thông tin số lượng tin nhắn
                     Container(
                       padding: const EdgeInsets.all(16),
                       child: Row(
@@ -195,20 +302,18 @@ class _TrashPageState extends State<TrashPage> {
                           Icon(Icons.delete_outline, color: Colors.grey[400]),
                           const SizedBox(width: 8),
                           Text(
-                            '${trashEmails.length} messages in trash',
+                            '${_filteredEmails.length} messages in trash',
                             style: TextStyle(color: Colors.grey[400], fontSize: 14),
                           ),
                         ],
                       ),
                     ),
-                    // Danh sách tin nhắn
                     Expanded(
                       child: ListView.builder(
-                        itemCount: trashEmails.length,
+                        itemCount: _filteredEmails.length,
                         itemBuilder: (context, index) {
-                          final email = trashEmails[index];
+                          final email = _filteredEmails[index];
                           final isSentByMe = email['sender_id'] == currentUserId;
-                          final senderName = email['sender'] ?? 'No Sender';
                           final subject = email['subject']?.isNotEmpty == true ? email['subject'] : 'No Subject';
 
                           return Card(
@@ -219,7 +324,7 @@ class _TrashPageState extends State<TrashPage> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    settings: RouteSettings(name: '/trashDetail'),
+                                    settings: const RouteSettings(name: '/trashDetail'),
                                     builder: (context) => EmailDetailPage(
                                       subject: email['subject'] ?? 'No Subject',
                                       body: email['body'] ?? '',
