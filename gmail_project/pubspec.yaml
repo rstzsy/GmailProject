@@ -36,6 +36,8 @@ dependencies:
   firebase_auth: ^4.17.4
   firebase_database: ^10.4.5
 
+  intl: ^0.18.1
+
   font_awesome_flutter: ^10.7.0
   image_picker: ^1.0.7 
 

@@ -7,11 +7,12 @@ class MyListView extends StatefulWidget {
   const MyListView({super.key, required this.currentUserId});
 
   @override
-  _MyListViewState createState() => _MyListViewState();
+  MyListViewState createState() => MyListViewState();
 }
 
-class _MyListViewState extends State<MyListView> {
+class MyListViewState extends State<MyListView> {
   List<Map<String, dynamic>> messages = [];
+  List<Map<String, dynamic>> allMessages = [];
   bool isLoading = true;
 
   @override
@@ -24,8 +25,31 @@ class _MyListViewState extends State<MyListView> {
     final service = MessageService();
     final result = await service.loadInboxMessages(widget.currentUserId);
     setState(() {
+      allMessages = result;
       messages = result;
       isLoading = false;
+    });
+  }
+
+  void applyDateFilter(DateTime date) {
+    final String dateStr = date.toIso8601String().split('T')[0]; // yyyy-MM-dd
+    setState(() {
+      messages = allMessages.where((msg) {
+        final sentAt = msg['sent_at'] ?? '';
+        return sentAt.startsWith(dateStr);
+      }).toList();
+    });
+  }
+
+
+  void applySearchFilter(String query) {
+    final lowerQuery = query.toLowerCase();
+    setState(() {
+      messages = allMessages.where((msg) {
+        final subject = msg['subject']?.toLowerCase() ?? '';
+        final body = msg['body']?.toLowerCase() ?? '';
+        return subject.contains(lowerQuery) || body.contains(lowerQuery);
+      }).toList();
     });
   }
 
