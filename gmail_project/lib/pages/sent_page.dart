@@ -115,8 +115,8 @@ class _SentPageState extends State<SentPage> {
                     final isStarred = email['is_starred'] == true;
 
                     return ListTile(
-                      onTap: () {
-                        Navigator.push(
+                      onTap: () async {
+                        final result = await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => EmailDetailPage(
@@ -128,9 +128,14 @@ class _SentPageState extends State<SentPage> {
                               sentAt: email['sent_at'],
                               senderId: email['sender_id'] ?? '',
                               receiverId: email['receiver_id'] ?? '',
+                              messageId: email['message_id'] ?? '',
                             ),
                           ),
                         );
+
+                        if (result == true) {
+                          _loadSentEmails(); 
+                        }
                       },
                       leading: CircleAvatar(
                         backgroundImage: NetworkImage(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import '../components/search.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../components/menu_drawer.dart';
-import 'composeEmail_page.dart';
+import '../components/search.dart';
+import '../services/message_service.dart';
+import 'emailDetail_page.dart';
 
 class TrashPage extends StatefulWidget {
   const TrashPage({super.key});
@@ -12,56 +14,132 @@ class TrashPage extends StatefulWidget {
 
 class _TrashPageState extends State<TrashPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final MessageService _messageService = MessageService();
 
-  List<Map<String, dynamic>> trashItems = [
-    {
-      "id": 1,
-      "sender": "alice@example.com",
-      "subject": "Old Report",
-      "content": "This is an outdated report...",
-      "date": "3 Apr"
-    },
-    {
-      "id": 2,
-      "sender": "",
-      "subject": "",
-      "content": "Meeting notes that are no longer needed.",
-      "date": "28 Mar"
-    },
-  ];
+  List<Map<String, dynamic>> trashEmails = [];
+  bool isLoading = true;
 
-  void _clearTrash() async {
-    bool? confirm = await showDialog<bool>(
+  @override
+  void initState() {
+    super.initState();
+    _loadTrashedEmails();
+  }
+
+  Future<void> _loadTrashedEmails() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      // Sử dụng method mới để load tin nhắn đã trash
+      final trashedMessages = await _messageService.loadAllTrashedMessages(userId);
+
+      setState(() {
+        trashEmails = trashedMessages;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading trashed emails: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  String _formatDate(String? timestamp) {
+    if (timestamp == null || timestamp.isEmpty) return '';
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      return "${dateTime.day}/${dateTime.month}";
+    } catch (e) {
+      return '';
+    }
+  }
+
+  Future<void> _restoreMessage(Map<String, dynamic> email) async {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == null) return;
+
+    final messageId = email['message_id'];
+    final isSentByMe = email['sender_id'] == currentUserId;
+
+    try {
+      await _messageService.restoreMessageFromTrash(
+        messageId,
+        currentUserId,
+        isSender: isSentByMe,
+      );
+
+      // Refresh danh sách
+      _loadTrashedEmails();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Message restored successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error restoring message: $e')),
+      );
+    }
+  }
+
+  Future<void> _permanentlyDeleteMessage(Map<String, dynamic> email) async {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == null) return;
+
+    final messageId = email['message_id'];
+    final isSentByMe = email['sender_id'] == currentUserId;
+
+    // Hiển thị dialog xác nhận
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Confirmation", style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text("Are you sure you want to empty the trash? This action cannot be undone."),
+        title: const Text('Permanently Delete'),
+        content: const Text('This message will be permanently deleted. This action cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel"),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Delete All", style: TextStyle(color: Colors.red)),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
 
     if (confirm == true) {
-      setState(() {
-        trashItems.clear();
-      });
+      try {
+        await _messageService.permanentlyDeleteMessage(
+          messageId,
+          currentUserId,
+          isSender: isSentByMe,
+        );
+
+        // Refresh danh sách
+        _loadTrashedEmails();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message permanently deleted')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting message: $e')),
+        );
+      }
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       key: _scaffoldKey,
-
       drawer: MenuDrawer(),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(65),
@@ -78,13 +156,13 @@ class _TrashPageState extends State<TrashPage> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.menu, color: Color.fromARGB(221, 232, 229, 229)),
+                    icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   ),
                   const Expanded(child: Search()),
                   const SizedBox(width: 10),
                   const CircleAvatar(
-                    backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/4.jpg'),
+                    backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/2.jpg'),
                     radius: 20,
                   ),
                 ],
@@ -93,100 +171,153 @@ class _TrashPageState extends State<TrashPage> {
           ),
         ),
       ),
-
-      body: Column(
-        children: [
-          const SizedBox(height: 10), 
-          trashItems.isEmpty
-              ? Expanded(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset('assets/images/empty_trash.png', width: 150, height: 150),
-                        const SizedBox(height: 20),
-                        const Text("Nothing in Trash", style: TextStyle(color: Colors.white, fontSize: 16)),
-                      ],
-                    ),
+      backgroundColor: const Color(0xFF121212),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : trashEmails.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset('assets/images/empty_trash.png', width: 150, height: 150),
+                      const SizedBox(height: 20),
+                      const Text("Nothing in Trash", style: TextStyle(color: Colors.white, fontSize: 16)),
+                    ],
                   ),
                 )
-              : Expanded(
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        color: Colors.grey[850],
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                "Items in the trash for more than 30 days are automatically deleted.",
-                                style: TextStyle(color: Colors.white70, fontSize: 14),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            ElevatedButton(
-                              onPressed: _clearTrash,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Color(0xFFffcad4),
-                              ),
-                              child: const Text("Empty Trash", style: TextStyle(color: Color(0xFFF4538A))),
-                            )
-                          ],
-                        ),
+              : Column(
+                  children: [
+                    // Header với thông tin số lượng tin nhắn
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, color: Colors.grey[400]),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${trashEmails.length} messages in trash',
+                            style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                          ),
+                        ],
                       ),
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: trashItems.length,
-                          itemBuilder: (context, index) {
-                            var item = trashItems[index];
-                            return ListTile(
-                              leading: const Icon(Icons.delete_outline, color: Colors.white),
-                              title: Text(
-                                item["sender"].isEmpty ? "Không rõ người gửi" : item["sender"],
-                                style: const TextStyle(color: Colors.white),
+                    ),
+                    // Danh sách tin nhắn
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: trashEmails.length,
+                        itemBuilder: (context, index) {
+                          final email = trashEmails[index];
+                          final isSentByMe = email['sender_id'] == currentUserId;
+                          final senderName = email['sender'] ?? 'No Sender';
+                          final subject = email['subject']?.isNotEmpty == true ? email['subject'] : 'No Subject';
+
+                          return Card(
+                            color: const Color(0xFF1E1E1E),
+                            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: ListTile(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    settings: RouteSettings(name: '/trashDetail'),
+                                    builder: (context) => EmailDetailPage(
+                                      subject: email['subject'] ?? 'No Subject',
+                                      body: email['body'] ?? '',
+                                      senderName: '',
+                                      senderTitle: '',
+                                      senderImageUrl: 'https://randomuser.me/api/portraits/men/${email['sender_id'].hashCode % 100}.jpg',
+                                      sentAt: email['sent_at'],
+                                      senderId: email['sender_id'] ?? '',
+                                      receiverId: email['receiver_id'] ?? '',
+                                      messageId: email['message_id'] ?? '',
+                                    ),
+                                  ),
+                                );
+                              },
+                              leading: Icon(
+                                isSentByMe ? Icons.send : Icons.inbox,
+                                color: Colors.grey[400],
+                              ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      subject,
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                  if (isSentByMe)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Text(
+                                        'Sent',
+                                        style: TextStyle(color: Colors.blue, fontSize: 10),
+                                      ),
+                                    ),
+                                ],
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    item["subject"].isEmpty ? "Không có chủ đề" : item["subject"],
-                                    style: const TextStyle(color: Colors.white70),
-                                  ),
-                                  Text(
-                                    item["content"],
+                                    email["body"] ?? '',
                                     style: const TextStyle(color: Colors.white54),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
-                              trailing: Text(
-                                item["date"],
-                                style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _formatDate(email["sent_at"]),
+                                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    onSelected: (value) {
+                                      if (value == 'restore') {
+                                        _restoreMessage(email);
+                                      } else if (value == 'delete') {
+                                        _permanentlyDeleteMessage(email);
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'restore',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.restore, color: Colors.green),
+                                            SizedBox(width: 8),
+                                            Text('Restore'),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_forever, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete Forever'),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        },
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-        ],
-      ),
-
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const ComposeEmailPage()),
-          );
-        },
-        child: const Icon(Icons.add),
-        backgroundColor: const Color.fromARGB(255, 89, 89, 89),
-      ),
-      backgroundColor: const Color(0xFF121212),
     );
   }
 }
