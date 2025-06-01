@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../components/search.dart';
 import '../components/menu_drawer.dart';
+import '../components/user_avatar.dart'; 
 import 'composeEmail_page.dart';
 import 'emailDetail_page.dart';
+import 'profile_page.dart';
 import '../services/message_service.dart';
 
 class SentPage extends StatefulWidget {
@@ -15,6 +17,7 @@ class SentPage extends StatefulWidget {
 
 class _SentPageState extends State<SentPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final GlobalKey _avatarKey = GlobalKey();
   final MessageService _messageService = MessageService();
 
   List<Map<String, dynamic>> allSentEmails = [];
@@ -143,9 +146,20 @@ class _SentPageState extends State<SentPage> {
                       },
                     ),
                   const SizedBox(width: 10),
-                  const CircleAvatar(
-                    backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/2.jpg'),
+                  UserAvatar(
+                    key: _avatarKey,
                     radius: 20,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ProfilePage(),
+                        ),
+                      ).then((value) {
+                        // Cập nhật lại avatar khi quay lại từ ProfilePage
+                        (_avatarKey.currentState as dynamic)?.refreshAvatar();
+                      });
+                    },
                   ),
                 ],
               ),
