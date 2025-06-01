@@ -24,10 +24,44 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String? avatarUrl;
   bool isLoadingAvatar = true;
-  bool _isAppInitialized = false; // Thêm flag để kiểm soát notification
+  bool _isAppInitialized = false;
+  bool _notificationEnabled = true; // Track notification status
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  // Method để hủy tất cả notifications
+  Future<void> cancelAllNotifications() async {
+    await flutterLocalNotificationsPlugin.cancelAll();
+    print('All notifications cancelled');
+  }
+
+  void _listenToNotificationSettingChanges() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    FirebaseDatabase.instance
+        .ref()
+        .child('users')
+        .child(currentUser.uid)
+        .child('notification_enabled')
+        .onValue
+        .listen((event) async {
+      final isEnabled = event.snapshot.value as bool? ?? true;
+      
+      setState(() {
+        _notificationEnabled = isEnabled;
+      });
+      
+      // Nếu user tắt notification, hủy tất cả notifications hiện tại
+      if (!isEnabled) {
+        await cancelAllNotifications();
+        print('Notifications disabled - all current notifications cancelled');
+      } else {
+        print('Notifications enabled');
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -35,7 +69,9 @@ class _MyHomePageState extends State<MyHomePage> {
     fetchUserAvatar();
     _initializeNotifications();
     _requestNotificationPermission();
-    
+
+    _listenToNotificationSettingChanges();
+  
     // Delay một chút trước khi bắt đầu lắng nghe để skip notifications cũ
     Future.delayed(const Duration(seconds: 2), () {
       setState(() {
@@ -103,6 +139,12 @@ class _MyHomePageState extends State<MyHomePage> {
       
       if (!_isAppInitialized) return;
       
+      // Kiểm tra trạng thái notification trước khi xử lý
+      if (!_notificationEnabled) {
+        print('Notifications are disabled - skipping notification');
+        return;
+      }
+      
       final value = event.snapshot.value;
       if (value != null && value is Map<dynamic, dynamic>) {
         final isNotificationRead = value['is_read'] ?? false;
@@ -120,7 +162,8 @@ class _MyHomePageState extends State<MyHomePage> {
           final isMessageRead = messageRecipSnapshot.child('is_read_recip').value as bool? ?? false;
           
           // Chỉ hiển thị notification nếu cả notification và message đều chưa được đọc
-          if (!isMessageRead) {
+          // VÀ notification được bật
+          if (!isMessageRead && _notificationEnabled) {
             final title = value['title'] ?? 'Notification';
             final body = value['body'] ?? 'You have a new message';
             
@@ -143,9 +186,13 @@ class _MyHomePageState extends State<MyHomePage> {
               platformDetails,
             );
 
-            // Đánh dấu notification đã được hiển thị
-            await event.snapshot.ref.update({'is_read': true});
+            print('Notification shown: $title - $body');
+          } else {
+            print('Notification skipped - either message read or notifications disabled');
           }
+
+          // Đánh dấu notification đã được xử lý (không phải đã hiển thị)
+          await event.snapshot.ref.update({'is_read': true});
         }
       }
     });
@@ -215,8 +262,13 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  // Test function để kiểm tra notification
+  // Test function để kiểm tra notification - chỉ hiển thị khi notification được bật
   Future<void> _testNotification() async {
+    if (!_notificationEnabled) {
+      print('Cannot test notification - notifications are disabled');
+      return;
+    }
+
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'channel_id',
       'General Notifications',
@@ -283,9 +335,12 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // Test button - bạn có thể xóa sau khi test xong
+                  // Test button - hiển thị trạng thái notification
                   IconButton(
-                    icon: const Icon(Icons.notifications, color: Colors.white),
+                    icon: Icon(
+                      _notificationEnabled ? Icons.notifications : Icons.notifications_off, 
+                      color: _notificationEnabled ? Colors.white : Colors.grey
+                    ),
                     onPressed: _testNotification,
                   ),
                   const SizedBox(width: 10),

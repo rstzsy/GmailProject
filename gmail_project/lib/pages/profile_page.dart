@@ -20,13 +20,14 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   bool _isNotificationOn = true;
+  bool _isUpdatingNotification = false; // Add loading state for notification toggle
   File? _avatarImage;
 
   String username = '';
   String phone = '';
-  String? avatarUrl; // Thêm biến để lưu URL avatar
+  String? avatarUrl;
   bool isLoading = true;
-  bool isUploadingAvatar = false; // Thêm biến để track việc upload avatar
+  bool isUploadingAvatar = false;
 
   @override
   void initState() {
@@ -46,7 +47,7 @@ class _ProfilePageState extends State<ProfilePage> {
         setState(() {
           username = data['username'] ?? 'No name';
           phone = data['phone_number'] ?? 'No phone';
-          avatarUrl = data['avatar_url']; // Lấy URL avatar từ database
+          avatarUrl = data['avatar_url'];
           _isNotificationOn = data['notification_enabled'] ?? true;
           isLoading = false;
         });
@@ -56,22 +57,52 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // notification
+  // Improved notification setting update with better error handling
   Future<void> _updateNotificationSetting(bool value) async {
+    setState(() {
+      _isUpdatingNotification = true;
+    });
+
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
-        await dbRef.update({'notification_enabled': value});
+      if (user == null) {
+        throw Exception('User not authenticated');
       }
+
+      final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
+      
+      // Use a transaction to ensure atomic update
+      await dbRef.update({
+        'notification_enabled': value,
+        'notification_updated_at': ServerValue.timestamp, // Use server timestamp
+      });
+      
+      // Wait a bit to ensure the write is propagated
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Verify the update was successful
+      final snapshot = await dbRef.child('notification_enabled').get();
+      final actualValue = snapshot.value as bool? ?? true;
+      
+      if (actualValue != value) {
+        throw Exception('Failed to update notification setting - verification failed');
+      }
+      
+      print('Notification setting successfully updated to: $value');
+      print('Verified value in database: $actualValue');
+      
     } catch (e) {
-      _showErrorDialog("Failed to update notification setting: $e");
+      print('Error updating notification setting: $e');
+      throw e;
+    } finally {
+      setState(() {
+        _isUpdatingNotification = false;
+      });
     }
   }
 
   Future<void> _pickImage() async {
     try {
-      // Hiển thị dialog để chọn nguồn ảnh
       final source = await _showImageSourceDialog();
       if (source == null) return;
 
@@ -88,7 +119,6 @@ class _ProfilePageState extends State<ProfilePage> {
           isUploadingAvatar = true;
         });
 
-        // Upload ảnh lên Firebase Storage
         await _uploadAvatarToFirebase();
       }
     } catch (e) {
@@ -133,24 +163,19 @@ class _ProfilePageState extends State<ProfilePage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      // Tạo reference với tên file unique
       final fileName = 'avatar_${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = FirebaseStorage.instance.ref().child('avatars/$fileName');
 
-      // Upload file
       final uploadTask = ref.putFile(_avatarImage!);
       final snapshot = await uploadTask;
-      
-      // Lấy download URL
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
-      // Cập nhật URL vào database
       final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
       await dbRef.update({'avatar_url': downloadUrl});
 
       setState(() {
         avatarUrl = downloadUrl;
-        _avatarImage = null; // Clear local image sau khi upload thành công
+        _avatarImage = null;
         isUploadingAvatar = false;
       });
 
@@ -247,11 +272,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildAvatarImage() {
-    // Ưu tiên hiển thị ảnh local nếu đang chọn ảnh mới
     if (_avatarImage != null) {
       return Image.file(_avatarImage!, fit: BoxFit.cover, width: 95, height: 95);
     }
-    // Hiển thị ảnh từ Firebase nếu có
     else if (avatarUrl != null && avatarUrl!.isNotEmpty) {
       return Image.network(
         avatarUrl!,
@@ -277,7 +300,6 @@ class _ProfilePageState extends State<ProfilePage> {
         },
       );
     }
-    // Hiển thị ảnh mặc định
     else {
       return Image.asset(
         'assets/images/avatar.png',
@@ -307,9 +329,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Column(
                   children: [
                     const SizedBox(height: 20),
-                    _buildAvatarSection(), // Sử dụng function mới
+                    _buildAvatarSection(),
                     const SizedBox(height: 10),
-                    // display username
                     Text(username, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                     Container(
                       margin: const EdgeInsets.only(top: 8),
@@ -328,42 +349,65 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 30),
-                    // display phone
                     Column(
                       children: [
                         _buildInfoCard(Icons.phone, "Phone", phone),
                       ],
                     ),
                     const SizedBox(height: 30),
-                    // notification
+                    // Improved notification section with loading state
                     _buildListTile(
                       Icons.notifications,
                       "Notifications",
                       const Color(0xFFFF80AB),
                       null,
-                      Switch(
-                        value: _isNotificationOn,
-                        activeColor: const Color(0xFFFF80AB),
-                        onChanged: (value) async {
-                          setState(() {
-                            _isNotificationOn = value;
-                          });
+                      _isUpdatingNotification 
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFFF80AB),
+                            ),
+                          )
+                        : Switch(
+                            value: _isNotificationOn,
+                            activeColor: const Color(0xFFFF80AB),
+                            onChanged: _isUpdatingNotification ? null : (value) async {
+                              print('Switch toggled to: $value');
+                              
+                              // Optimistically update UI
+                              final previousValue = _isNotificationOn;
+                              setState(() {
+                                _isNotificationOn = value;
+                              });
 
-                          try {
-                            final user = FirebaseAuth.instance.currentUser;
-                            if (user != null) {
-                              final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
-                              await dbRef.update({'notification_enabled': value});
-                            }
-                          } catch (e) {
-                            // Xử lý lỗi hoặc thông báo
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to update notification setting')),
-                            );
-                          }
-                        },
-                      ),
+                              try {
+                                await _updateNotificationSetting(value);
+                                
+                                // Show success message
+                                String message = value 
+                                  ? "Notifications enabled. You'll receive notifications for new messages."
+                                  : "Notifications disabled. You won't receive any notifications.";
+                                
+                                _showSuccessDialog(message);
+                                
+                                print('Notification setting change completed successfully');
+                                
+                              } catch (e) {
+                                print('Failed to update notification setting: $e');
+                                
+                                // Rollback UI state on error
+                                setState(() {
+                                  _isNotificationOn = previousValue;
+                                });
+                                
+                                _showErrorDialog('Failed to update notification setting. Please try again.');
+                              }
+                            },
+                          ),
                     ),
+
                     _buildListTile(
                       FontAwesomeIcons.userSecret,
                       "Edit Profile",
@@ -372,7 +416,6 @@ class _ProfilePageState extends State<ProfilePage> {
                         context,
                         MaterialPageRoute(builder: (context) => const EditProfilePage()),
                       ).then((value) {
-                        // Gọi lại fetchUserData khi quay lại từ EditProfilePage
                         fetchUserData();
                       })
                     ),
