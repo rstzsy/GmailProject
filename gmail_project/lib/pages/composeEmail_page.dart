@@ -202,6 +202,54 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         'is_trashed_recip': false,
       });
 
+
+    // Kiểm tra xem message đã được đọc chưa trước khi tạo notification
+    final recipientSnapshot = await database
+        .child('internal_message_recipients')
+        .child(messageId)
+        .child(recipientUid)
+        .get();
+
+    final isMessageRead = recipientSnapshot.child('is_read_recip').value as bool? ?? false;
+
+    // Chỉ tạo notification nếu message chưa được đọc
+    if (!isMessageRead) {
+      final notificationRef = database.child('notifications').child(recipientUid).push();
+      await notificationRef.set({
+        'title': 'You have a new message',
+        'body': 'From: $fromEmail\nSubject: $subject',
+        'timestamp': DateTime.now().millisecondsSinceEpoch, // Dùng timestamp số
+        'sender_id': fromUid,
+        'message_id': messageId,
+        'is_read': false,
+      });
+    }
+
+    // // Upload file đính kèm lên Firebase Storage (TẠM THỜI BỎ)
+    // for (var image in _attachedImages) {
+    //   final fileName = image.name;
+    //   final file = File(image.path);
+    //   final storageRef = storage.ref().child('attachments/$messageId/$fileName');
+    //   final uploadTask = await storageRef.putFile(file);
+    //   final downloadUrl = await storageRef.getDownloadURL();
+
+    //   await database.child('attachments').child(messageId).push().set({
+    //     'file_path': downloadUrl,
+    //   });
+    // }
+
+    // Xóa form sau khi gửi
+    toController.clear();
+    subjectController.clear();
+    bodyController.clear();
+    setState(() => _attachedImages.clear());
+
+    CustomDialog.show(
+      context,
+      title: "Success",
+      content: "Send mail successfully!",
+      icon: Icons.check_circle_outline,
+    );
       // Xóa draft nếu có
       if (_currentDraftId != null) {
         await _messageService.deleteDraft(_currentDraftId!);
@@ -282,6 +330,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     bodyController.dispose();
     fromController.dispose();
     super.dispose();
+
   }
 
   @override

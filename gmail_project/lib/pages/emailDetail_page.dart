@@ -47,6 +47,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   void initState() {
     super.initState();
     _loadUserInfo();
+    _markMessageAsRead(); // Thêm function này
 
     // Kiểm tra route name để xác định có phải đang xem thư trong thùng rác không
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -57,6 +58,66 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         });
       }
     });
+  }
+
+  // Thêm function để đánh dấu thư đã đọc
+  Future<void> _markMessageAsRead() async {
+    try {
+      if (widget.messageId == null) {
+        print('Message ID is null, cannot mark as read');
+        return;
+      }
+
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUserId == null) {
+        print('Current user is null, cannot mark as read');
+        return;
+      }
+
+      print('Marking message as read - MessageID: ${widget.messageId}, UserID: $currentUserId');
+
+      // Cập nhật is_read_recip trong internal_message_recipients
+      await _db
+          .child('internal_message_recipients')
+          .child(widget.messageId!)
+          .child(currentUserId)
+          .update({'is_read_recip': true});
+
+      // Kiểm tra xem user hiện tại có phải là sender không
+      final isSender = currentUserId == widget.senderId;
+      
+      // Nếu là sender, cập nhật is_read trong internal_messages
+      if (isSender) {
+        await _db
+            .child('internal_messages')
+            .child(widget.messageId!)
+            .update({'is_read': true});
+      }
+
+      // Cập nhật tất cả notifications liên quan đến message này thành đã đọc
+      final notificationsSnapshot = await _db
+          .child('notifications')
+          .child(currentUserId)
+          .orderByChild('message_id')
+          .equalTo(widget.messageId!)
+          .get();
+
+      if (notificationsSnapshot.exists) {
+        final notifications = notificationsSnapshot.value as Map<dynamic, dynamic>;
+        for (var notificationKey in notifications.keys) {
+          await _db
+              .child('notifications')
+              .child(currentUserId)
+              .child(notificationKey)
+              .update({'is_read': true});
+        }
+        print('Updated ${notifications.length} notifications as read');
+      }
+
+      print('Successfully marked message as read');
+    } catch (e) {
+      print('Error marking message as read: $e');
+    }
   }
 
   Future<void> _loadUserInfo() async {
@@ -186,10 +247,6 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          // IconButton(
-          //   icon: const Icon(Icons.delete_outline, color: Colors.white),
-          //   onPressed: _handleDelete,
-          // ),
           if (!isTrashDetail)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.white),

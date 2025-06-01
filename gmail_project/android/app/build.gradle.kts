@@ -6,15 +6,16 @@ plugins {
 
     //firebase
     id("com.google.gms.google-services")
-    
 }
 
 android {
     namespace = "com.example.gmail_project"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"  // Thêm NDK version cụ thể
 
     compileOptions {
+        // Enable core library desugaring
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -32,6 +33,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Enable multidex for large apps
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -44,16 +48,19 @@ android {
 }
 
 dependencies {
+    // Core library desugaring dependency - cách viết cho Kotlin DSL
+    add("coreLibraryDesugaring", "com.android.tools:desugar_jdk_libs:2.0.4")
+    
+    // Firebase dependencies
     implementation(platform("com.google.firebase:firebase-bom:32.7.0")) // bom để đồng bộ version
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-database")
+    
+    // Multidex support (if needed)
+    implementation("androidx.multidex:multidex:2.0.1")
 }
-
 
 flutter {
     source = "../.."
 }
-
-
-
