@@ -17,8 +17,11 @@ class _StarredPageState extends State<StarredPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final MessageService _messageService = MessageService();
 
-  List<Map<String, dynamic>> starredEmails = [];
+  List<Map<String, dynamic>> allStarredEmails = [];
+  List<Map<String, dynamic>> filteredEmails = [];
   bool isLoading = true;
+  String searchQuery = '';
+  DateTime? selectedDate;
 
   @override
   void initState() {
@@ -40,22 +43,61 @@ class _StarredPageState extends State<StarredPage> {
     ).toList();
 
     setState(() {
-      starredEmails = starred;
+      allStarredEmails = starred;
+      _applyFilters();
       isLoading = false;
     });
   }
 
+  void _applyFilters() {
+    final query = searchQuery.toLowerCase();
+    setState(() {
+      filteredEmails = allStarredEmails.where((email) {
+        final subject = (email['subject'] ?? '').toString().toLowerCase();
+        final body = (email['body'] ?? '').toString().toLowerCase();
+        final sentAt = email['sent_at'];
+        bool matchesSearch = subject.contains(query) || body.contains(query);
+        bool matchesDate = true;
+        if (selectedDate != null && sentAt != null) {
+          final date = DateTime.tryParse(sentAt);
+          matchesDate = date != null &&
+              date.year == selectedDate!.year &&
+              date.month == selectedDate!.month &&
+              date.day == selectedDate!.day;
+        }
+        return matchesSearch && matchesDate;
+      }).toList();
+    });
+  }
+
+  void _onSearchChanged(String value) {
+    searchQuery = value;
+    _applyFilters();
+  }
+
+  void _onDateFilterTap() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (pickedDate != null) {
+      selectedDate = pickedDate;
+      _applyFilters();
+    }
+  }
+
   Future<void> _toggleStar(
-    String messageId, bool newStatus, String userId, bool isSender) async {
+      String messageId, bool newStatus, String userId, bool isSender) async {
     await _messageService.updateStarStatus(
       messageId,
       newStatus,
       userId,
       isSender: isSender,
     );
-    await _loadStarredEmails(); 
+    await _loadStarredEmails();
   }
-
 
   String _formatDate(String? timestamp) {
     if (timestamp == null || timestamp.isEmpty) return '';
@@ -92,7 +134,26 @@ class _StarredPageState extends State<StarredPage> {
                     icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   ),
-                  const Expanded(child: Search()),
+                  Expanded(
+                    child: Search(
+                      onChanged: _onSearchChanged,
+                      onDateFilterTap: _onDateFilterTap,
+                    ),
+                  ),
+
+                  // Nút clear filter ngày nếu có selectedDate
+                  if (selectedDate != null)
+                    IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.white),
+                      tooltip: 'Clear date filter',
+                      onPressed: () {
+                        setState(() {
+                          selectedDate = null;
+                          _applyFilters();
+                        });
+                      },
+                    ),
+
                   const SizedBox(width: 10),
                   const CircleAvatar(
                     backgroundImage: NetworkImage('https://randomuser.me/api/portraits/men/1.jpg'),
@@ -100,13 +161,14 @@ class _StarredPageState extends State<StarredPage> {
                   ),
                 ],
               ),
+
             ),
           ),
         ),
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : starredEmails.isEmpty
+          : filteredEmails.isEmpty
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -118,9 +180,9 @@ class _StarredPageState extends State<StarredPage> {
                   ),
                 )
               : ListView.builder(
-                  itemCount: starredEmails.length,
+                  itemCount: filteredEmails.length,
                   itemBuilder: (context, index) {
-                    final email = starredEmails[index];
+                    final email = filteredEmails[index];
                     final isSentByMe = email['sender_id'] == currentUserId;
                     final isStarred = isSentByMe
                         ? (email['is_starred'] ?? false)
@@ -146,7 +208,7 @@ class _StarredPageState extends State<StarredPage> {
                         );
 
                         if (result == true) {
-                          _loadStarredEmails(); 
+                          _loadStarredEmails();
                         }
                       },
                       leading: CircleAvatar(

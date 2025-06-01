@@ -15,7 +15,22 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final GlobalKey<MyListViewState> listViewKey = GlobalKey<MyListViewState>();
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  // filter time
+  Future<void> _selectDateFilter() async {
+    final DateTime? selectedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2022),
+      lastDate: DateTime.now(),
+    );
+
+    if (selectedDate != null) {
+      listViewKey.currentState?.applyDateFilter(selectedDate);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +69,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       _scaffoldKey.currentState?.openDrawer();
                     },
                   ),
-                  const Expanded(
-                    child: Search(),
+                  Expanded(
+                    child: Search(
+                      onChanged: (value) {
+                        listViewKey.currentState?.applySearchFilter(value);
+                      },
+                      onDateFilterTap: _selectDateFilter,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   GestureDetector(
@@ -80,7 +100,10 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
       ),
-      body: MyListView(currentUserId: currentUserId),
+      body: MyListView(
+        key: listViewKey,
+        currentUserId: currentUserId,
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.push(

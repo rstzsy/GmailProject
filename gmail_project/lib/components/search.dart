@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 class Search extends StatelessWidget {
-  const Search({super.key});
+  final Function(String)? onChanged;
+  final VoidCallback? onDateFilterTap;
+  const Search({super.key, this.onChanged, this.onDateFilterTap});
 
   @override
   Widget build(BuildContext context) {
@@ -16,13 +18,18 @@ class Search extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
+              onChanged: onChanged,
               decoration: InputDecoration(
                 hintText: "Search in mail",
                 border: InputBorder.none,
                 hintStyle: TextStyle(color: Colors.grey[600]),
               ),
-              style: const TextStyle(color: Colors.black87),
+              style: const TextStyle(color: Colors.white),
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.calendar_today, color: Colors.white),
+            onPressed: onDateFilterTap,
           ),
         ],
       ),
