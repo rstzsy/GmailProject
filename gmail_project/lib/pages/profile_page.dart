@@ -47,11 +47,25 @@ class _ProfilePageState extends State<ProfilePage> {
           username = data['username'] ?? 'No name';
           phone = data['phone_number'] ?? 'No phone';
           avatarUrl = data['avatar_url']; // Lấy URL avatar từ database
+          _isNotificationOn = data['notification_enabled'] ?? true;
           isLoading = false;
         });
       } else {
         setState(() => isLoading = false);
       }
+    }
+  }
+
+  // notification
+  Future<void> _updateNotificationSetting(bool value) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
+        await dbRef.update({'notification_enabled': value});
+      }
+    } catch (e) {
+      _showErrorDialog("Failed to update notification setting: $e");
     }
   }
 
@@ -321,15 +335,33 @@ class _ProfilePageState extends State<ProfilePage> {
                       ],
                     ),
                     const SizedBox(height: 30),
+                    // notification
                     _buildListTile(
                       Icons.notifications,
                       "Notifications",
-                      Color(0xFFFF80AB),
+                      const Color(0xFFFF80AB),
                       null,
                       Switch(
                         value: _isNotificationOn,
-                        activeColor: Color(0xFFFF80AB),
-                        onChanged: (value) => setState(() => _isNotificationOn = value),
+                        activeColor: const Color(0xFFFF80AB),
+                        onChanged: (value) async {
+                          setState(() {
+                            _isNotificationOn = value;
+                          });
+
+                          try {
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user != null) {
+                              final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
+                              await dbRef.update({'notification_enabled': value});
+                            }
+                          } catch (e) {
+                            // Xử lý lỗi hoặc thông báo
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to update notification setting')),
+                            );
+                          }
+                        },
                       ),
                     ),
                     _buildListTile(

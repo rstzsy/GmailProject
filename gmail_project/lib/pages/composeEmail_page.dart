@@ -113,6 +113,28 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         'is_trashed_recip': false,
       });
 
+    // Kiểm tra xem message đã được đọc chưa trước khi tạo notification
+    final recipientSnapshot = await database
+        .child('internal_message_recipients')
+        .child(messageId)
+        .child(recipientUid)
+        .get();
+
+    final isMessageRead = recipientSnapshot.child('is_read_recip').value as bool? ?? false;
+
+    // Chỉ tạo notification nếu message chưa được đọc
+    if (!isMessageRead) {
+      final notificationRef = database.child('notifications').child(recipientUid).push();
+      await notificationRef.set({
+        'title': 'You have a new message',
+        'body': 'From: $fromEmail\nSubject: $subject',
+        'timestamp': DateTime.now().millisecondsSinceEpoch, // Dùng timestamp số
+        'sender_id': fromUid,
+        'message_id': messageId,
+        'is_read': false,
+      });
+    }
+
     // // Upload file đính kèm lên Firebase Storage (TẠM THỜI BỎ)
     // for (var image in _attachedImages) {
     //   final fileName = image.name;
