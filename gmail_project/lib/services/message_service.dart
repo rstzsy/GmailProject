@@ -3,6 +3,97 @@ import 'package:firebase_database/firebase_database.dart';
 class MessageService {
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
 
+  /// Lưu draft email
+  Future<String> saveDraft({
+    required String senderId,
+    required String recipientPhone,
+    required String subject,
+    required String body,
+    String? draftId,
+  }) async {
+    final timestamp = DateTime.now().toIso8601String();
+    
+    // Tìm recipient ID từ phone number
+    String? recipientId;
+    String recipientName = 'Unknown User';
+    
+    if (recipientPhone.isNotEmpty) {
+      final usersSnapshot = await _db.child('users').get();
+      for (var user in usersSnapshot.children) {
+        if (user.child('phone_number').value == recipientPhone) {
+          recipientId = user.key;
+          recipientName = user.child('username').value?.toString() ?? 
+                        user.child('name').value?.toString() ?? 
+                        'Unknown User';
+          break;
+        }
+      }
+    }
+
+    final draftData = {
+      'sender_id': senderId,
+      'recipient_phone': recipientPhone,
+      'recipient_id': recipientId,
+      'recipient_name': recipientName,
+      'subject': subject,
+      'body': body,
+      'updated_at': timestamp,
+    };
+
+    if (draftId != null) {
+      // Cập nhật draft hiện có
+      await _db.child('drafts').child(draftId).update(draftData);
+      return draftId;
+    } else {
+      // Tạo draft mới
+      draftData['created_at'] = timestamp;
+      final draftRef = _db.child('drafts').push();
+      await draftRef.set(draftData);
+      return draftRef.key!;
+    }
+  }
+
+  /// Lấy danh sách drafts của user
+  Future<List<Map<String, dynamic>>> loadDrafts(String senderId) async {
+    final draftsSnapshot = await _db.child('drafts').get();
+    final List<Map<String, dynamic>> drafts = [];
+
+    for (var draftSnap in draftsSnapshot.children) {
+      final data = Map<String, dynamic>.from(draftSnap.value as Map);
+      
+      if (data['sender_id'] == senderId) {
+        data['draft_id'] = draftSnap.key;
+        drafts.add(data);
+      }
+    }
+
+    // Sắp xếp theo thời gian cập nhật (mới nhất trước)
+    drafts.sort((a, b) {
+      final aTime = a['updated_at'] ?? a['created_at'] ?? '';
+      final bTime = b['updated_at'] ?? b['created_at'] ?? '';
+      return bTime.compareTo(aTime);
+    });
+
+    return drafts;
+  }
+
+  /// Xóa draft
+  Future<void> deleteDraft(String draftId) async {
+    await _db.child('drafts').child(draftId).remove();
+  }
+
+  /// Lấy thông tin draft theo ID
+  Future<Map<String, dynamic>?> getDraft(String draftId) async {
+    final snapshot = await _db.child('drafts').child(draftId).get();
+    if (snapshot.exists) {
+      final data = Map<String, dynamic>.from(snapshot.value as Map);
+      data['draft_id'] = draftId;
+      return data;
+    }
+    return null;
+  }
+
+
   /// Lấy danh sách thư đã gửi của user với thông tin người nhận
   Future<List<Map<String, dynamic>>> loadSentMessages(String currentUserId) async {
     final messagesSnapshot = await _db.child('internal_messages').get();
