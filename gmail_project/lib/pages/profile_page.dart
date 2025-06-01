@@ -9,7 +9,7 @@ import 'editProfile_page.dart';
 import 'languagSelection_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-
+import 'package:firebase_storage/firebase_storage.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -24,7 +24,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   String username = '';
   String phone = '';
+  String? avatarUrl; // Thêm biến để lưu URL avatar
   bool isLoading = true;
+  bool isUploadingAvatar = false; // Thêm biến để track việc upload avatar
 
   @override
   void initState() {
@@ -44,6 +46,7 @@ class _ProfilePageState extends State<ProfilePage> {
         setState(() {
           username = data['username'] ?? 'No name';
           phone = data['phone_number'] ?? 'No phone';
+          avatarUrl = data['avatar_url']; // Lấy URL avatar từ database
           isLoading = false;
         });
       } else {
@@ -53,9 +56,221 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() => _avatarImage = File(pickedFile.path));
+    try {
+      // Hiển thị dialog để chọn nguồn ảnh
+      final source = await _showImageSourceDialog();
+      if (source == null) return;
+
+      final pickedFile = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 400,
+        maxHeight: 400,
+      );
+      
+      if (pickedFile != null) {
+        setState(() {
+          _avatarImage = File(pickedFile.path);
+          isUploadingAvatar = true;
+        });
+
+        // Upload ảnh lên Firebase Storage
+        await _uploadAvatarToFirebase();
+      }
+    } catch (e) {
+      _showErrorDialog("Error selecting image: $e");
+    }
+  }
+
+  Future<ImageSource?> _showImageSourceDialog() async {
+    return await showDialog<ImageSource>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text(
+            'Select Image Source',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Color(0xFFF48FB1)),
+                title: const Text('Photo Library', style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Color(0xFFF48FB1)),
+                title: const Text('Take Photo', style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _uploadAvatarToFirebase() async {
+    if (_avatarImage == null) return;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Tạo reference với tên file unique
+      final fileName = 'avatar_${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance.ref().child('avatars/$fileName');
+
+      // Upload file
+      final uploadTask = ref.putFile(_avatarImage!);
+      final snapshot = await uploadTask;
+      
+      // Lấy download URL
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      // Cập nhật URL vào database
+      final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
+      await dbRef.update({'avatar_url': downloadUrl});
+
+      setState(() {
+        avatarUrl = downloadUrl;
+        _avatarImage = null; // Clear local image sau khi upload thành công
+        isUploadingAvatar = false;
+      });
+
+      _showSuccessDialog("Avatar updated successfully!");
+    } catch (e) {
+      setState(() {
+        isUploadingAvatar = false;
+      });
+      _showErrorDialog("Error uploading avatar: $e");
+    }
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Error', style: TextStyle(color: Colors.white)),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK', style: TextStyle(color: Color(0xFFF48FB1))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSuccessDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Success', style: TextStyle(color: Colors.white)),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK', style: TextStyle(color: Color(0xFFF48FB1))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarSection() {
+    return Stack(
+      alignment: Alignment.bottomRight,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFFD5C4F1), Color(0xFFF48FB1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          padding: const EdgeInsets.all(3),
+          child: CircleAvatar(
+            radius: 50,
+            backgroundColor: Colors.black,
+            child: ClipOval(
+              child: _buildAvatarImage(),
+            ),
+          ),
+        ),
+        if (isUploadingAvatar)
+          const Positioned(
+            child: CircularProgressIndicator(
+              color: Color(0xFFF48FB1),
+              strokeWidth: 2,
+            ),
+          ),
+        Positioned(
+          bottom: 0,
+          right: 4,
+          child: GestureDetector(
+            onTap: isUploadingAvatar ? null : _pickImage,
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.white,
+              child: Icon(
+                isUploadingAvatar ? Icons.hourglass_empty : Icons.edit,
+                size: 18,
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAvatarImage() {
+    // Ưu tiên hiển thị ảnh local nếu đang chọn ảnh mới
+    if (_avatarImage != null) {
+      return Image.file(_avatarImage!, fit: BoxFit.cover, width: 95, height: 95);
+    }
+    // Hiển thị ảnh từ Firebase nếu có
+    else if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return Image.network(
+        avatarUrl!,
+        fit: BoxFit.cover,
+        width: 95,
+        height: 95,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Color(0xFFF48FB1),
+              strokeWidth: 2,
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            'assets/images/avatar.png',
+            fit: BoxFit.cover,
+            width: 95,
+            height: 95,
+          );
+        },
+      );
+    }
+    // Hiển thị ảnh mặc định
+    else {
+      return Image.asset(
+        'assets/images/avatar.png',
+        fit: BoxFit.cover,
+        width: 95,
+        height: 95,
+      );
     }
   }
 
@@ -78,43 +293,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Column(
                   children: [
                     const SizedBox(height: 20),
-                    Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFD5C4F1), Color(0xFFF48FB1)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          padding: const EdgeInsets.all(3),
-                          child: CircleAvatar(
-                            radius: 50,
-                            backgroundColor: Colors.black,
-                            child: ClipOval(
-                              child: _avatarImage != null
-                                  ? Image.file(_avatarImage!, fit: BoxFit.cover, width: 95, height: 95)
-                                  : Image.asset('assets/images/avatar.png', fit: BoxFit.cover, width: 95, height: 95),
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 4,
-                          child: GestureDetector(
-                            onTap: _pickImage,
-                            child: CircleAvatar(
-                              radius: 16,
-                              backgroundColor: Colors.white,
-                              child: const Icon(Icons.edit, size: 18, color: Colors.black),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    _buildAvatarSection(), // Sử dụng function mới
                     const SizedBox(height: 10),
                     // display username
                     Text(username, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -241,4 +420,3 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
-

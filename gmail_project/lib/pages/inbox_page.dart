@@ -5,6 +5,7 @@ import '../components/search.dart';
 import 'profile_page.dart';
 import 'composeEmail_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
@@ -17,6 +18,72 @@ class _MyHomePageState extends State<MyHomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<MyListViewState> listViewKey = GlobalKey<MyListViewState>();
   final String currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+  
+  // Thêm biến để lưu trữ thông tin user
+  String? avatarUrl;
+  bool isLoadingAvatar = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchUserAvatar();
+  }
+
+  // Hàm lấy avatar từ Firebase
+  Future<void> fetchUserAvatar() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final uid = user.uid;
+      final dbRef = FirebaseDatabase.instance.ref('users/$uid');
+      final snapshot = await dbRef.get();
+
+      if (snapshot.exists) {
+        final data = Map<String, dynamic>.from(snapshot.value as Map);
+        setState(() {
+          avatarUrl = data['avatar_url'];
+          isLoadingAvatar = false;
+        });
+      } else {
+        setState(() => isLoadingAvatar = false);
+      }
+    }
+  }
+
+  // Widget để build avatar với loading state
+  Widget _buildAvatar() {
+    if (isLoadingAvatar) {
+      return const CircleAvatar(
+        radius: 20,
+        backgroundColor: Colors.grey,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Colors.white,
+        ),
+      );
+    }
+
+    // Nếu có avatar từ Firebase
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return CircleAvatar(
+        radius: 20,
+        backgroundImage: NetworkImage(avatarUrl!),
+        backgroundColor: Colors.grey,
+        onBackgroundImageError: (exception, stackTrace) {
+          // Nếu lỗi load ảnh từ Firebase, fallback về ảnh mặc định
+          setState(() {
+            avatarUrl = null;
+          });
+        },
+      );
+    }
+
+    // Fallback về ảnh mặc định
+    return const CircleAvatar(
+      backgroundImage: AssetImage('assets/images/avatar.png'),
+      radius: 20,
+      backgroundColor: Colors.grey,
+    );
+  }
 
   // filter time
   Future<void> _selectDateFilter() async {
@@ -85,14 +152,12 @@ class _MyHomePageState extends State<MyHomePage> {
                         MaterialPageRoute(
                           builder: (context) => const ProfilePage(),
                         ),
-                      );
+                      ).then((value) {
+                        // Cập nhật lại avatar khi quay lại từ ProfilePage
+                        fetchUserAvatar();
+                      });
                     },
-                    child: const CircleAvatar(
-                      backgroundImage: NetworkImage(
-                        'https://randomuser.me/api/portraits/men/1.jpg',
-                      ),
-                      radius: 20,
-                    ),
+                    child: _buildAvatar(), // Sử dụng widget avatar đã tạo
                   ),
                 ],
               ),

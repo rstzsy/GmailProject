@@ -100,14 +100,14 @@ class MyListViewState extends State<MyListView> {
     }
 
     if (messages.isEmpty) {
-      return const Center(child: Text('Không có thư nào.'));
+      return const Center(child: Text('No messages available.'));
     }
 
     return ListView.builder(
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[index];
-        final subject = message['subject'] ?? 'Không có tiêu đề';
+        final subject = message['subject'] ?? 'No subject';
         final body = message['body'] ?? '';
         final sentAt = message['sent_at'] ?? '';
         final senderId = message['sender_id'] ?? '';
