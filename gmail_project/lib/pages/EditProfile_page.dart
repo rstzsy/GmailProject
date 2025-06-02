@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../components/dialog.dart';
+import './phoneOTP_page.dart';
+
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -384,6 +386,29 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
             _buildLabel("Password"),
             _buildTextField(passwordController, isPassword: true),
+
+            // forgot pass link
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PhoneInputScreen(), 
+                    ),
+                  );
+                },
+                child: Text(
+                  "Forgot Password?",
+                  style: TextStyle(
+                    color: Color(0xFFF48FB1),
+                    fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ),
 
             const SizedBox(height: 30),
             SizedBox(
