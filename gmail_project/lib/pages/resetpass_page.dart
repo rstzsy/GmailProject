@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import '../components/dialog.dart';
+
 
 class ResetPasswordScreen extends StatefulWidget {
   final String? phoneNumber;
@@ -67,8 +69,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       setState(() => _isLoading = false);
 
       if (result == null) {
-        _showSuccess('Đổi mật khẩu thành công! Vui lòng đăng nhập lại với mật khẩu mới.');
-        await Future.delayed(Duration(seconds: 2));
+        _showSuccess('Change password successfully! Please, sign in with new password.');
+        await Future.delayed(Duration(seconds: 4));
         Navigator.of(context).popUntil((route) => route.isFirst);
       } else {
         _showError(result);
@@ -94,37 +96,50 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   }
 
   void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 3),
-      ),
+    // ScaffoldMessenger.of(context).showSnackBar(
+    //   SnackBar(
+    //     content: Text(message),
+    //     backgroundColor: Colors.green,
+    //     duration: Duration(seconds: 3),
+    //   ),
+    // );
+    CustomDialog.show(
+      context,
+      title: "Success",
+      content: message,
+      icon: Icons.check_circle_outline,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Đặt lại mật khẩu')),
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text('Reset Password', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Color(0xFFF48FB1),
+        foregroundColor: Colors.white,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            SizedBox(height: 20,),
             if (widget.phoneNumber != null) ...[
               Container(
-                padding: EdgeInsets.all(12),
+                padding: EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
+                  color: Color.fromARGB(255, 252, 155, 187).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  //border: Border.all(color: Colors.blue.shade200),
                 ),
                 child: Text(
-                  'Số điện thoại: ${widget.phoneNumber}',
+                  'Phone number: ${widget.phoneNumber}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade800,
+                    color: Color(0xFFF48FB1),
+                    fontSize: 18,
                   ),
                 ),
               ),
@@ -136,9 +151,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               controller: _oldPasswordController,
               obscureText: _obscureOldPassword,
               decoration: InputDecoration(
-                labelText: 'Mật khẩu cũ',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock),
+                labelText: 'Old Password',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Color.fromARGB(255, 245, 105, 152),)),
+                prefixIcon: Icon(Icons.lock, color: Color(0xFFF48FB1),),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscureOldPassword ? Icons.visibility_off : Icons.visibility,
@@ -149,16 +164,16 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 ),
               ),
             ),
-            SizedBox(height: 16),
+            SizedBox(height: 20),
 
             // Mật khẩu mới
             TextField(
               controller: _passwordController,
               obscureText: _obscurePassword,
               decoration: InputDecoration(
-                labelText: 'Mật khẩu mới',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock),
+                labelText: 'New Password',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Color.fromARGB(255, 245, 105, 152),)),
+                prefixIcon: Icon(Icons.lock, color: Color(0xFFF48FB1),),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -176,9 +191,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               controller: _confirmPasswordController,
               obscureText: _obscureConfirmPassword,
               decoration: InputDecoration(
-                labelText: 'Xác nhận mật khẩu mới',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.lock_outline),
+                labelText: 'Confirm New Password',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Color.fromARGB(255, 245, 105, 152),)),
+                prefixIcon: Icon(Icons.lock_outline, color: Color(0xFFF48FB1),),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
@@ -195,7 +210,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               onPressed: _isLoading ? null : _resetPassword,
               style: ElevatedButton.styleFrom(
                 padding: EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.blue,
+                backgroundColor: Color(0xFFF48FB1),
                 foregroundColor: Colors.white,
               ),
               child: _isLoading
@@ -211,10 +226,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           ),
                         ),
                         SizedBox(width: 8),
-                        Text('Đang xử lý...'),
+                        Text('Processing...'),
                       ],
                     )
-                  : Text('Đặt lại mật khẩu'),
+                  : Text('Reset Password',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                  ),
             ),
 
             SizedBox(height: 16),

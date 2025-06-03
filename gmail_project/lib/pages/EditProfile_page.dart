@@ -400,11 +400,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   );
                 },
                 child: Text(
-                  "Forgot Password?",
+                  "Change Password?",
                   style: TextStyle(
                     color: Color(0xFFF48FB1),
-                    fontWeight: FontWeight.w500,
-                    decoration: TextDecoration.underline,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20
                   ),
                 ),
               ),
