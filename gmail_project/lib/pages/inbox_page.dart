@@ -68,7 +68,10 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     fetchUserAvatar();
     _initializeNotifications();
-    _requestNotificationPermission();
+    _requestNotificationPermission().then((_) {
+      // Debug permissions sau khi request
+      _debugNotificationPermissions();
+    });
 
     _listenToNotificationSettingChanges();
   
@@ -82,24 +85,90 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _requestNotificationPermission() async {
+    // Request permission cho iOS với chi tiết hơn
+    final IOSFlutterLocalNotificationsPlugin? iosImplementation =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+
+    if (iosImplementation != null) {
+      // Yêu cầu tất cả các quyền cần thiết
+      final bool? granted = await iosImplementation.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+        critical: true,  // Thêm critical permission
+        provisional: false, // Tắt provisional để force user action
+      );
+      
+      print('iOS notification permission granted: $granted');
+      
+      if (granted != true) {
+        print('iOS notification permission denied');
+        // Hiển thị dialog hướng dẫn user vào Settings để bật notification
+        _showPermissionDialog();
+      } else {
+        print('iOS notification permission granted successfully');
+      }
+    }
+
+    // Request permission cho Android
     final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
         flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
-      // For Android 13+ (API level 33+), request notification permission
       final bool? granted = await androidImplementation.requestNotificationsPermission();
-      print('Notification permission granted: $granted');
+      print('Android notification permission granted: $granted');
     }
   }
+
+  void _showPermissionDialog() {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Notification Permission Required'),
+      content: Text(
+        'To receive notifications, please enable notifications for this app in Settings.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            // Có thể sử dụng package như app_settings để mở Settings
+            // AppSettings.openNotificationSettings();
+          },
+          child: Text('Open Settings'),
+        ),
+      ],
+    ),
+  );
+}
+
 
   Future<void> _initializeNotifications() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@drawable/ic_mail');
 
+    // Cấu hình chi tiết hơn cho iOS
+    const DarwinInitializationSettings initializationSettingsIOS =
+        DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+      requestCriticalPermission: false,
+      defaultPresentAlert: true,
+      defaultPresentBadge: true,
+      defaultPresentSound: true,
+    );
+
+    // Cấu hình chung cho cả Android và iOS
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
-      iOS: null,
+      iOS: initializationSettingsIOS,
     );
 
     final bool? initialized = await flutterLocalNotificationsPlugin.initialize(
@@ -111,7 +180,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     print('Notifications initialized: $initialized');
 
-    // Tạo notification channel
+    // Tạo notification channel cho Android
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'channel_id',
       'General Notifications',
@@ -124,6 +193,82 @@ class _MyHomePageState extends State<MyHomePage> {
         ?.createNotificationChannel(channel);
 
     print('Notification channel created');
+  }
+
+  Future<void> _debugNotificationPermissions() async {
+    final IOSFlutterLocalNotificationsPlugin? iosImplementation =
+        flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+
+    if (iosImplementation != null) {
+      print('=== iOS Notification Permissions Debug ===');
+
+      final bool? granted = await iosImplementation.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+        critical: true,
+        provisional: true,
+      );
+
+      print('Permission request result: $granted');
+
+      if (granted != true) {
+        print('User denied notification permissions.');
+        // Có thể hiện một dialog tùy chỉnh để yêu cầu người dùng cấp quyền trong Cài đặt
+      } else {
+        print('User granted notification permissions.');
+      }
+
+      print('==========================================');
+    }
+  }
+
+  // Phương thức show notification với cấu hình chi tiết hơn
+  Future<void> _showNotification(String title, String body) async {
+    if (!_notificationEnabled) {
+      print('Cannot show notification - notifications are disabled');
+      return;
+    }
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'channel_id',
+      'General Notifications',
+      channelDescription: 'This channel is for general notifications.',
+      importance: Importance.max,
+      priority: Priority.high,
+      showWhen: true,
+      enableVibration: true,
+      playSound: true,
+    );
+
+    // Cấu hình chi tiết hơn cho iOS
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: 'default',
+      badgeNumber: 1,
+      threadIdentifier: 'email_notifications',
+      interruptionLevel: InterruptionLevel.active,
+    );
+
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    try {
+      await flutterLocalNotificationsPlugin.show(
+        DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        title,
+        body,
+        platformDetails,
+      );
+      print('Notification shown successfully: $title - $body');
+    } catch (e) {
+      print('Error showing notification: $e');
+    }
   }
 
   void _listenToNotifications() {
@@ -167,26 +312,10 @@ class _MyHomePageState extends State<MyHomePage> {
             final title = value['title'] ?? 'Notification';
             final body = value['body'] ?? 'You have a new message';
             
-            // Hiển thị notification...
-            const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-              'channel_id',
-              'General Notifications',
-              importance: Importance.max,
-              priority: Priority.high,
-            );
-
-            const NotificationDetails platformDetails = NotificationDetails(
-              android: androidDetails,
-            );
-
-            await flutterLocalNotificationsPlugin.show(
-              DateTime.now().millisecondsSinceEpoch.remainder(100000),
-              title,
-              body,
-              platformDetails,
-            );
-
-            print('Notification shown: $title - $body');
+            // Sử dụng phương thức _showNotification mới
+            await _showNotification(title, body);
+            
+            print('Notification processed: $title - $body');
           } else {
             print('Notification skipped - either message read or notifications disabled');
           }
@@ -262,31 +391,9 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  // Test function để kiểm tra notification - chỉ hiển thị khi notification được bật
+  // Test function để kiểm tra notification - sử dụng _showNotification mới
   Future<void> _testNotification() async {
-    if (!_notificationEnabled) {
-      print('Cannot test notification - notifications are disabled');
-      return;
-    }
-
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'channel_id',
-      'General Notifications',
-      channelDescription: 'This channel is for general notifications.',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
-
-    const NotificationDetails platformDetails = NotificationDetails(
-      android: androidDetails,
-    );
-
-    await flutterLocalNotificationsPlugin.show(
-      0,
-      'Test Notification',
-      'This is a test notification',
-      platformDetails,
-    );
+    await _showNotification('Test Notification', 'This is a test notification');
   }
 
   @override

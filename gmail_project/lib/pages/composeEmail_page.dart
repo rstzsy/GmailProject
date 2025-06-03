@@ -153,6 +153,10 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
 
     final fromUid = auth.currentUser?.uid ?? 'anonymous';
 
+    print('=== DEBUG: Starting _sendEmail ===');
+    print('From: $fromEmail, To: $toPhone, Subject: $subject');
+    print('Sender UID: $fromUid');
+
     // Tìm UID người nhận theo số điện thoại
     final usersSnapshot = await database.child('users').get();
     String? recipientUid;
@@ -162,6 +166,8 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         break;
       }
     }
+
+    print('Recipient UID found: $recipientUid');
 
     if (recipientUid == null) {
       CustomDialog.show(
@@ -178,6 +184,8 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
       final messageRef = database.child('internal_messages').push();
       final messageId = messageRef.key!;
 
+      print('Creating message with ID: $messageId');
+
       await messageRef.set({
         'sender_id': fromUid,
         'subject': subject,
@@ -188,6 +196,8 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         'is_read': false,
         'is_trashed': false,
       });
+
+      print('Message created successfully');
 
       // Lưu người nhận
       await database
@@ -202,57 +212,51 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         'is_trashed_recip': false,
       });
 
+      print('Recipient data saved successfully');
 
-    // Kiểm tra xem message đã được đọc chưa trước khi tạo notification
-    final recipientSnapshot = await database
-        .child('internal_message_recipients')
-        .child(messageId)
-        .child(recipientUid)
-        .get();
+      // Kiểm tra xem message đã được đọc chưa trước khi tạo notification
+      final recipientSnapshot = await database
+          .child('internal_message_recipients')
+          .child(messageId)
+          .child(recipientUid)
+          .get();
 
-    final isMessageRead = recipientSnapshot.child('is_read_recip').value as bool? ?? false;
+      final isMessageRead = recipientSnapshot.child('is_read_recip').value as bool? ?? false;
+      print('Is message read: $isMessageRead');
 
-    // Chỉ tạo notification nếu message chưa được đọc
-    if (!isMessageRead) {
-      final notificationRef = database.child('notifications').child(recipientUid).push();
-      await notificationRef.set({
-        'title': 'You have a new message',
-        'body': 'From: $fromEmail\nSubject: $subject',
-        'timestamp': DateTime.now().millisecondsSinceEpoch, // Dùng timestamp số
-        'sender_id': fromUid,
-        'message_id': messageId,
-        'is_read': false,
-      });
-    }
+      // Chỉ tạo notification nếu message chưa được đọc
+      if (!isMessageRead) {
+        print('Creating notification for recipient: $recipientUid');
+        
+        final notificationRef = database.child('notifications').child(recipientUid).push();
+        final notificationData = {
+          'title': 'You have a new message',
+          'body': 'From: $fromEmail\nSubject: $subject',
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'sender_id': fromUid,
+          'message_id': messageId,
+          'is_read': false,
+        };
+        
+        print('Notification data: $notificationData');
+        
+        await notificationRef.set(notificationData);
+        print('Notification created successfully with key: ${notificationRef.key}');
+        
+        // Thêm log để verify notification đã được lưu
+        final verifyNotification = await notificationRef.get();
+        print('Notification verification: ${verifyNotification.exists}');
+        if (verifyNotification.exists) {
+          print('Notification content: ${verifyNotification.value}');
+        }
+      } else {
+        print('Message already read, skipping notification creation');
+      }
 
-    // // Upload file đính kèm lên Firebase Storage (TẠM THỜI BỎ)
-    // for (var image in _attachedImages) {
-    //   final fileName = image.name;
-    //   final file = File(image.path);
-    //   final storageRef = storage.ref().child('attachments/$messageId/$fileName');
-    //   final uploadTask = await storageRef.putFile(file);
-    //   final downloadUrl = await storageRef.getDownloadURL();
-
-    //   await database.child('attachments').child(messageId).push().set({
-    //     'file_path': downloadUrl,
-    //   });
-    // }
-
-    // Xóa form sau khi gửi
-    toController.clear();
-    subjectController.clear();
-    bodyController.clear();
-    setState(() => _attachedImages.clear());
-
-    CustomDialog.show(
-      context,
-      title: "Success",
-      content: "Send mail successfully!",
-      icon: Icons.check_circle_outline,
-    );
       // Xóa draft nếu có
       if (_currentDraftId != null) {
         await _messageService.deleteDraft(_currentDraftId!);
+        print('Draft deleted: $_currentDraftId');
       }
 
       // Xóa form sau khi gửi
@@ -264,6 +268,8 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         _hasUnsavedChanges = false;
       });
 
+      print('Form cleared successfully');
+
       CustomDialog.show(
         context,
         title: "Success",
@@ -271,9 +277,12 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         icon: Icons.check_circle_outline,
       );
 
+      print('Success dialog shown');
+
       // Quay lại trang trước
       Navigator.pop(context, true);
     } catch (e) {
+      print('ERROR in _sendEmail: $e');
       CustomDialog.show(
         context,
         title: "Error",
@@ -330,7 +339,6 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     bodyController.dispose();
     fromController.dispose();
     super.dispose();
-
   }
 
   @override

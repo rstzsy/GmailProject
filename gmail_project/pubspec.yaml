@@ -39,6 +39,7 @@ dependencies:
 
   flutter_local_notifications: ^17.2.3  # Phiên bản mới nhất
   permission_handler: ^11.0.1
+  app_settings: ^5.1.1
 
 
   intl: ^0.18.1
