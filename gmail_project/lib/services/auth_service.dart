@@ -10,10 +10,10 @@ class AuthService {
   bool _isUserAuthenticated() {
     final user = _auth.currentUser;
     if (user == null) {
-      print('❌ No authenticated user found');
+      print('No authenticated user found');
       return false;
     }
-    print('✅ User authenticated: ${user.uid}');
+    print(' User authenticated: ${user.uid}');
     return true;
   }
 
@@ -21,7 +21,7 @@ class AuthService {
   Future<void> initializeUserNotifications(String uid) async {
     try {
       if (!_isUserAuthenticated() || _auth.currentUser?.uid != uid) {
-        print('❌ User not authenticated or UID mismatch');
+        print(' User not authenticated or UID mismatch');
         return;
       }
 
@@ -35,14 +35,14 @@ class AuthService {
           'push_notifications': true,
           'created_at': ServerValue.timestamp,
         });
-        print('✅ Initialized notifications for user: $uid');
+        print(' Initialized notifications for user: $uid');
       } else {
-        print('✅ Notifications already exist for user: $uid');
+        print(' Notifications already exist for user: $uid');
       }
     } on FirebaseException catch (e) {
-      print('❌ Firebase Error initializing notifications: ${e.code} - ${e.message}');
+      print(' Firebase Error initializing notifications: ${e.code} - ${e.message}');
     } catch (e) {
-      print('❌ General Error initializing notifications: $e');
+      print(' General Error initializing notifications: $e');
     }
   }
 
@@ -50,7 +50,7 @@ class AuthService {
   Future<Map<String, dynamic>?> getUserNotifications(String uid) async {
     try {
       if (!_isUserAuthenticated() || _auth.currentUser?.uid != uid) {
-        print('❌ User not authenticated or UID mismatch for getUserNotifications');
+        print(' User not authenticated or UID mismatch for getUserNotifications');
         return null;
       }
 
@@ -68,10 +68,10 @@ class AuthService {
         };
       }
     } on FirebaseException catch (e) {
-      print('❌ Firebase Error getting user notifications: ${e.code} - ${e.message}');
+      print(' Firebase Error getting user notifications: ${e.code} - ${e.message}');
       return null;
     } catch (e) {
-      print('❌ General Error getting user notifications: $e');
+      print(' General Error getting user notifications: $e');
       return null;
     }
   }
@@ -80,7 +80,7 @@ class AuthService {
   Future<bool> updateNotificationSettings(String uid, Map<String, dynamic> settings) async {
     try {
       if (!_isUserAuthenticated() || _auth.currentUser?.uid != uid) {
-        print('❌ User not authenticated or UID mismatch for updateNotificationSettings');
+        print(' User not authenticated or UID mismatch for updateNotificationSettings');
         return false;
       }
 
@@ -88,13 +88,13 @@ class AuthService {
         ...settings,
         'updated_at': ServerValue.timestamp,
       });
-      print('✅ Updated notification settings for user: $uid');
+      print(' Updated notification settings for user: $uid');
       return true;
     } on FirebaseException catch (e) {
-      print('❌ Firebase Error updating notification settings: ${e.code} - ${e.message}');
+      print(' Firebase Error updating notification settings: ${e.code} - ${e.message}');
       return false;
     } catch (e) {
-      print('❌ General Error updating notification settings: $e');
+      print(' General Error updating notification settings: $e');
       return false;
     }
   }
@@ -103,7 +103,7 @@ class AuthService {
   Future<Map<String, dynamic>?> getCurrentUserNotifications() async {
     final user = _auth.currentUser;
     if (user == null) {
-      print('❌ No authenticated user for getCurrentUserNotifications');
+      print(' No authenticated user for getCurrentUserNotifications');
       return null;
     }
     return await getUserNotifications(user.uid);
@@ -113,7 +113,7 @@ class AuthService {
   Future<bool> updateCurrentUserNotificationSettings(Map<String, dynamic> settings) async {
     final user = _auth.currentUser;
     if (user == null) {
-      print('❌ No authenticated user for updateCurrentUserNotificationSettings');
+      print(' No authenticated user for updateCurrentUserNotificationSettings');
       return false;
     }
     return await updateNotificationSettings(user.uid, settings);
@@ -152,13 +152,13 @@ class AuthService {
         // Khởi tạo cài đặt thông báo sau khi đăng ký thành công
         await initializeUserNotifications(user.uid);
 
-        print('✅ User registered successfully: ${user.uid}');
+        print(' User registered successfully: ${user.uid}');
         return null;
       } else {
         return "Không thể tạo tài khoản. Vui lòng thử lại.";
       }
     } on FirebaseAuthException catch (e) {
-      print('❌ Sign up error: ${e.code} - ${e.message}');
+      print(' Sign up error: ${e.code} - ${e.message}');
       switch (e.code) {
         case 'email-already-in-use':
           return 'Số điện thoại này đã được đăng ký.';
@@ -168,7 +168,7 @@ class AuthService {
           return e.message ?? 'Lỗi đăng ký không xác định.';
       }
     } catch (e) {
-      print('❌ General sign up error: $e');
+      print(' General sign up error: $e');
       return 'Lỗi hệ thống: $e';
     }
   }
@@ -184,7 +184,7 @@ class AuthService {
 
       return snapshot.exists;
     } on FirebaseException catch (e) {
-      print('❌ Database access error: ${e.code} - ${e.message}');
+      print(' Database access error: ${e.code} - ${e.message}');
       return false;
     }
   }
@@ -204,13 +204,13 @@ class AuthService {
       );
 
       if (userCredential.user != null) {
-        print('✅ User signed in successfully: ${userCredential.user!.uid}');
+        print(' User signed in successfully: ${userCredential.user!.uid}');
         return null;
       } else {
         return "Không thể đăng nhập. Vui lòng thử lại.";
       }
     } on FirebaseAuthException catch (e) {
-      print('❌ Sign in error: ${e.code} - ${e.message}');
+      print(' Sign in error: ${e.code} - ${e.message}');
       switch (e.code) {
         case 'user-not-found':
           return 'Không tìm thấy tài khoản với số điện thoại này.';
@@ -222,7 +222,7 @@ class AuthService {
           return e.message ?? 'Lỗi đăng nhập không xác định.';
       }
     } catch (e) {
-      print('❌ General sign in error: $e');
+      print(' General sign in error: $e');
       return 'Lỗi hệ thống: $e';
     }
   }
@@ -280,9 +280,9 @@ class AuthService {
   Future<void> signOut() async {
     try {
       await _auth.signOut();
-      print('✅ User signed out successfully');
+      print(' User signed out successfully');
     } catch (e) {
-      print('❌ Sign out error: $e');
+      print(' Sign out error: $e');
     }
   }
 

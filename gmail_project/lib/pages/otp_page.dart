@@ -71,9 +71,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text('Nhập mã OTP'),
-        backgroundColor: Colors.blue,
+        title: Text('Enter OTP code', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Color(0xFFF48FB1),
         foregroundColor: Colors.white,
       ),
       body: Padding(
@@ -89,23 +90,23 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   Icon(
                     Icons.sms,
                     size: 80,
-                    color: Colors.blue,
+                    color: Color(0xFFF48FB1),
                   ),
                   SizedBox(height: 16),
                   Text(
-                    'Xác minh OTP',
+                    'OTP Confirmation',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+                      color: Color(0xFFF48FB1),
                     ),
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Nhập mã 6 chữ số đã được gửi đến số điện thoại của bạn',
+                    'Enter 6 numbers sent to your number phone',
                     style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[600],
+                      fontSize: 19,
+                      color: Colors.grey[400],
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -114,9 +115,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     Text(
                       widget.phoneNumber!,
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.blue,
+                        color: Color(0xFFF48FB1),
                       ),
                     ),
                   ],
@@ -136,13 +137,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 letterSpacing: 8,
               ),
               decoration: InputDecoration(
-                labelText: 'Mã OTP',
+                labelText: 'OTP code',
                 hintText: '000000',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 counterText: '',
-                prefixIcon: Icon(Icons.lock_outline),
+                prefixIcon: Icon(Icons.lock_outline, color: Color(0xFFF48FB1)),
               ),
             ),
 
@@ -154,10 +155,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _verifyOtp,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: Color(0xFFF48FB1),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                 ),
                 child: _isLoading
@@ -173,11 +174,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                             ),
                           ),
                           SizedBox(width: 12),
-                          Text('Đang xác minh...'),
+                          Text('Confirmating...'),
                         ],
                       )
                     : Text(
-                        'Xác minh',
+                        'Confirm',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -191,13 +192,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             // Resend OTP
             TextButton(
               onPressed: _isLoading ? null : () {
-                // TODO: Implement resend OTP
                 _showError('Tính năng gửi lại OTP sẽ được thêm vào sau');
               },
               child: Text(
-                'Không nhận được mã? Gửi lại',
+                'Do not receive code? Send again',
                 style: TextStyle(
-                  color: Colors.blue,
+                  color: Color(0xFFF48FB1),
                   fontSize: 16,
                 ),
               ),

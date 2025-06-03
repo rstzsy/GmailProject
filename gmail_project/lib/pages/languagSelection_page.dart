@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class LanguageSelectionPage extends StatefulWidget {
   const LanguageSelectionPage({super.key});
@@ -6,6 +8,37 @@ class LanguageSelectionPage extends StatefulWidget {
   @override
   State<LanguageSelectionPage> createState() => _LanguageSelectionPageState();
 }
+
+Future<String?> _loadUserLanguage() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return null;
+
+  final ref = FirebaseDatabase.instance.ref('users/${user.uid}/language');
+  final snapshot = await ref.get();
+  if (snapshot.exists) {
+    final langCode = snapshot.value as String;
+    // map từ langCode sang tên hiển thị
+    switch (langCode) {
+      case 'vi':
+        return 'Vietnamese';
+      case 'es':
+        return 'Spanish';
+      case 'fr':
+        return 'French';
+      case 'zh':
+        return 'Chinese';
+      case 'ja':
+        return 'Japanese';
+      case 'ko':
+        return 'Korean';
+      case 'en':
+      default:
+        return 'English';
+    }
+  }
+  return null;
+}
+
 
 class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   final List<Map<String, String>> _languages = [
@@ -29,9 +62,41 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
       'sub': 'Langue française',
       'flag': 'assets/images/flag_france.png'
     },
+    {
+      'name': 'Chinese',
+      'sub': '中文',          
+      'flag': 'assets/images/flag_chinese.jpg'
+    },
+    {
+      'name': 'Japanese',
+      'sub': '日本語',       
+      'flag': 'assets/images/flag_japan.png'
+    },
+    {
+      'name': 'Korean',
+      'sub': '한국어',        
+      'flag': 'assets/images/flag_korean.png'
+    },
+
   ];
 
   String _selectedLanguage = 'English';
+
+  @override
+  void initState() {
+    super.initState();
+    _initSelectedLanguage();
+  }
+
+  Future<void> _initSelectedLanguage() async {
+    final lang = await _loadUserLanguage();
+    if (lang != null) {
+      setState(() {
+        _selectedLanguage = lang;
+      });
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -59,10 +124,45 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
           final isSelected = _selectedLanguage == lang['name'];
 
           return GestureDetector(
-            onTap: () {
+            onTap: () async {
               setState(() {
                 _selectedLanguage = lang['name']!;
               });
+
+              // Map tên ngôn ngữ thành code
+              String langCode;
+              switch (_selectedLanguage) {
+                case 'Vietnamese':
+                  langCode = 'vi';
+                  break;
+                case 'Spanish':
+                  langCode = 'es';
+                  break;
+                case 'French':
+                  langCode = 'fr';
+                  break;
+                case 'Chinese':
+                  langCode = 'zh';
+                  break;
+                case 'Japanese':
+                  langCode = 'ja';
+                  break;
+                case 'Korean':
+                  langCode = 'ko';
+                  break;
+                default:
+                  langCode = 'en';
+              }
+              // Lấy user hiện tại
+              final user = FirebaseAuth.instance.currentUser;
+              if (user != null) {
+                // Lưu mã ngôn ngữ vào Firebase Realtime Database
+                final ref = FirebaseDatabase.instance.ref('users/${user.uid}');
+                await ref.update({'language': langCode});
+              }
+
+              // Quay lại màn trước với giá trị langCode
+              Navigator.pop(context, langCode);
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),

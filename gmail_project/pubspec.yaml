@@ -40,6 +40,7 @@ dependencies:
   flutter_local_notifications: ^17.2.3  # Phiên bản mới nhất
   permission_handler: ^11.0.1
   app_settings: ^5.1.1
+  translator: ^0.1.7
 
 
   intl: ^0.18.1
@@ -86,6 +87,9 @@ flutter:
     - assets/images/flag_spanish.png
     - assets/images/flag_france.png
     - assets/images/flag_spanish.png
+    - assets/images/flag_chinese.jpg
+    - assets/images/flag_japan.png
+    - assets/images/flag_korean.png
 
 
   fonts:

@@ -61,9 +61,10 @@ class _PhoneInputScreenState extends State<PhoneInputScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text('Quên mật khẩu'),
-        backgroundColor: Colors.blue,
+        title: Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold),),
+        backgroundColor: Color(0xFFF48FB1),
         foregroundColor: Colors.white,
       ),
       body: Padding(
@@ -79,23 +80,23 @@ class _PhoneInputScreenState extends State<PhoneInputScreen> {
                   Icon(
                     Icons.phone_android,
                     size: 80,
-                    color: Colors.blue,
+                    color: Color(0xFFF48FB1),
                   ),
                   SizedBox(height: 16),
                   Text(
-                    'Nhập số điện thoại',
+                    'Enter your phone number',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+                      color: Color(0xFFF48FB1),
                     ),
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Chúng tôi sẽ gửi mã OTP đến số điện thoại này để xác minh danh tính của bạn',
+                    'We will send OTP code to your phone number to confirm your identication',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.grey[600],
+                      color: Colors.grey[400],
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -108,13 +109,13 @@ class _PhoneInputScreenState extends State<PhoneInputScreen> {
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               decoration: InputDecoration(
-                labelText: 'Số điện thoại',
+                labelText: 'Phone Number',
                 hintText: '+84912345678',
-                prefixIcon: Icon(Icons.phone),
+                prefixIcon: Icon(Icons.phone, color: Color(0xFFF48FB1)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                helperText: 'Bao gồm mã quốc gia (ví dụ: +84)',
+                helperText: 'Include national code(ex: +84)',
               ),
             ),
 
@@ -126,10 +127,10 @@ class _PhoneInputScreenState extends State<PhoneInputScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _sendOtp,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: Color(0xFFF48FB1),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                 ),
                 child: _isLoading
@@ -145,51 +146,52 @@ class _PhoneInputScreenState extends State<PhoneInputScreen> {
                             ),
                           ),
                           SizedBox(width: 12),
-                          Text('Đang gửi...'),
+                          Text('Sending...'),
                         ],
                       )
                     : Text(
-                        'Gửi mã OTP',
+                        'Send OTP code',
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
               ),
             ),
 
-            SizedBox(height: 16),
+            SizedBox(height: 20),
 
             // Information
             Container(
               padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
+                color: Color(0xFFF48FB1).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.blue),
+                      Icon(Icons.info_outline, color: Color(0xFFF48FB1)),
                       SizedBox(width: 8),
                       Text(
-                        'Lưu ý:',
+                        'Note:',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: Colors.blue,
+                          color: Color(0xFFF48FB1),
+                          fontSize: 18
                         ),
                       ),
                     ],
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '• Số điện thoại phải bao gồm mã quốc gia\n'
-                    '• Mã OTP sẽ được gửi qua tin nhắn SMS\n'
-                    '• Mã OTP có hiệu lực trong 5 phút',
+                    '• Phone number should include national code\n'
+                    '• OTP code will be sent from SMS message\n'
+                    '• OTP code ís valid for 5 minutes',
                     style: TextStyle(
-                      color: Colors.blue[700],
-                      fontSize: 14,
+                      color: Color(0xFFF48FB1),
+                      fontSize: 16,
                     ),
                   ),
                 ],
