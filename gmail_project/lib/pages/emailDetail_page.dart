@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/message_service.dart';
+import 'replyEmail_page.dart'; 
+import 'forwardEmail_page.dart';
 
 class EmailDetailPage extends StatefulWidget {
   final String subject;
@@ -47,7 +49,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   void initState() {
     super.initState();
     _loadUserInfo();
-    _markMessageAsRead(); // Thêm function này
+    _markMessageAsRead();
 
     // Kiểm tra route name để xác định có phải đang xem thư trong thùng rác không
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,7 +62,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     });
   }
 
-  // Thêm function để đánh dấu thư đã đọc
+  // Function để đánh dấu thư đã đọc
   Future<void> _markMessageAsRead() async {
     try {
       if (widget.messageId == null) {
@@ -235,6 +237,53 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     }
   }
 
+  // Function để navigate tới trang Reply
+  void _navigateToReply() async {
+    if (widget.messageId == null || widget.senderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể reply: thiếu thông tin tin nhắn')),
+      );
+      return;
+    }
+
+    // Kiểm tra xem có thể reply không (không reply cho chính mình)
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == widget.senderId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể reply cho tin nhắn của chính bạn')),
+      );
+      return;
+    }
+
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ReplyEmailPage(
+            originalMessageId: widget.messageId!,
+            originalSubject: widget.subject,
+            originalBody: widget.body,
+            originalSenderName: displaySenderName.isNotEmpty ? displaySenderName : widget.senderName,
+            originalSenderId: widget.senderId!,
+            originalSentAt: widget.sentAt,
+          ),
+        ),
+      );
+
+      // Nếu reply thành công, có thể refresh data hoặc hiển thị thông báo
+      if (result == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reply đã được gửi thành công!')),
+        );
+      }
+    } catch (e) {
+      print('Error navigating to reply page: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi mở trang reply: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -350,28 +399,54 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12.0),
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFffcad4),
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          child: Row(
+            children: [
+              // Reply Button
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFffcad4),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _navigateToReply,
+                  icon: const Icon(Icons.reply, color: Color(0xFFF4538A), size: 20),
+                  label: const Text(
+                    "Reply",
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Color(0xFFF4538A),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Đã nhấn Trả lời")),
-              );
-            },
-            icon: const Icon(Icons.reply, color: Color(0xFFF4538A), size: 20),
-            label: const Text(
-              "Reply",
-              style: TextStyle(
-                fontSize: 20,
-                color: Color(0xFFF4538A),
-                fontWeight: FontWeight.bold,
+              const SizedBox(width: 12),
+              // Forward Button
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE8F5E8),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _navigateToForward,
+                  icon: const Icon(Icons.forward, color: Color(0xFF4CAF50), size: 20),
+                  label: const Text(
+                    "Forward",
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Color(0xFF4CAF50),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -393,5 +468,42 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
     return months[month];
+  }
+
+  Future<void> _navigateToForward() async {
+    if (widget.messageId == null || widget.senderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể forward: thiếu thông tin tin nhắn')),
+      );
+      return;
+    }
+
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ForwardEmailPage(
+            originalMessageId: widget.messageId!,
+            originalSubject: widget.subject,
+            originalBody: widget.body,
+            originalSenderName: displaySenderName.isNotEmpty ? displaySenderName : widget.senderName,
+            originalSenderId: widget.senderId!,
+            originalSentAt: widget.sentAt,
+          ),
+        ),
+      );
+
+      // Nếu forward thành công, hiển thị thông báo
+      if (result == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Forward đã được gửi thành công!')),
+        );
+      }
+    } catch (e) {
+      print('Error navigating to forward page: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi khi mở trang forward: $e')),
+      );
+    }
   }
 }
