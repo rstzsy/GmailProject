@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:translator/translator.dart'; // Dùng package dịch
 import '../pages/emailDetail_page.dart';
 import '../services/message_service.dart';
+
+import 'package:firebase_database/firebase_database.dart';
 
 class MyListView extends StatefulWidget {
   final String currentUserId;
@@ -14,19 +19,95 @@ class MyListViewState extends State<MyListView> {
   List<Map<String, dynamic>> messages = [];
   List<Map<String, dynamic>> allMessages = [];
   bool isLoading = true;
+  String userLanguage = 'en'; // default
+  final translator = GoogleTranslator();
+
+  late final DatabaseReference _languageRef;
+  StreamSubscription<DatabaseEvent>? _languageSubscription;
 
   @override
   void initState() {
     super.initState();
-    loadMessages();
+
+    // Khởi tạo ref realtime đến node language của user
+    _languageRef = FirebaseDatabase.instance.ref('users/${widget.currentUserId}/language');
+
+    // Lắng nghe realtime khi language thay đổi
+    _languageSubscription = _languageRef.onValue.listen((event) async {
+      final newLang = event.snapshot.value?.toString() ?? 'en';
+      if (newLang != userLanguage) {
+        setState(() {
+          userLanguage = newLang;
+          isLoading = true;
+        });
+        await loadMessages();
+      }
+    });
+
+    // Load lần đầu ngôn ngữ & messages
+    _initUserLanguageAndLoadMessages();
   }
 
+  @override
+  void dispose() {
+    _languageSubscription?.cancel();
+    super.dispose();
+  }
+
+  // Hàm lấy ngôn ngữ user từ Firebase Realtime Database
+  Future<String> getUserLanguage(String userId) async {
+    try {
+      final ref = FirebaseDatabase.instance.ref('users/$userId/language');
+      final snapshot = await ref.get();
+      if (snapshot.exists) {
+        return snapshot.value.toString();
+      }
+    } catch (e) {
+      print("Error getting user language: $e");
+    }
+    return 'en';
+  }
+
+  // Khởi tạo ngôn ngữ rồi load message
+  Future<void> _initUserLanguageAndLoadMessages() async {
+    userLanguage = await getUserLanguage(widget.currentUserId);
+    await loadMessages();
+  }
+
+  // Dịch text với target language
+  Future<String> translateText(String text, String targetLang) async {
+    if (text.isEmpty) return text;
+    if (targetLang == 'en') return text; // bỏ dịch nếu là tiếng Anh
+    try {
+      final translation = await translator.translate(text, to: targetLang);
+      return translation.text;
+    } catch (e) {
+      print("Translate error: $e");
+      return text;
+    }
+  }
+
+  // Load message và dịch từng subject + body
   Future<void> loadMessages() async {
     final service = MessageService();
     final result = await service.loadInboxMessages(widget.currentUserId);
+
+    List<Map<String, dynamic>> translatedMessages = [];
+
+    for (var msg in result) {
+      final translatedSubject = await translateText(msg['subject'] ?? '', userLanguage);
+      final translatedBody = await translateText(msg['body'] ?? '', userLanguage);
+
+      translatedMessages.add({
+        ...msg,
+        'subject_translated': translatedSubject,
+        'body_translated': translatedBody,
+      });
+    }
+
     setState(() {
-      allMessages = result;
-      messages = result;
+      allMessages = translatedMessages;
+      messages = translatedMessages;
       isLoading = false;
     });
   }
@@ -41,21 +122,18 @@ class MyListViewState extends State<MyListView> {
     });
   }
 
-
   void applySearchFilter(String query) {
     final lowerQuery = query.toLowerCase();
     setState(() {
       messages = allMessages.where((msg) {
-        final subject = msg['subject']?.toLowerCase() ?? '';
-        final body = msg['body']?.toLowerCase() ?? '';
+        final subject = (msg['subject_translated'] ?? msg['subject'] ?? '').toLowerCase();
+        final body = (msg['body_translated'] ?? msg['body'] ?? '').toLowerCase();
         return subject.contains(lowerQuery) || body.contains(lowerQuery);
       }).toList();
     });
   }
 
-  // Đã bổ sung receiverId và isSender=false (người nhận)
   Future<void> _toggleStar(String messageId, bool newStatus) async {
-    // Cập nhật local state ngay để UI phản hồi nhanh
     setState(() {
       final index = messages.indexWhere((msg) => msg['message_id'] == messageId);
       if (index != -1) {
@@ -63,7 +141,6 @@ class MyListViewState extends State<MyListView> {
       }
     });
 
-    // Cập nhật lên Firebase
     await MessageService().updateStarStatus(
       messageId,
       newStatus,
@@ -71,7 +148,6 @@ class MyListViewState extends State<MyListView> {
       isSender: false,
     );
 
-    // Tải lại danh sách để đồng bộ dữ liệu thật
     await loadMessages();
   }
 
@@ -100,19 +176,26 @@ class MyListViewState extends State<MyListView> {
     }
 
     if (messages.isEmpty) {
-      return const Center(child: Text('No messages available.'));
+      return FutureBuilder<String>(
+        future: translateText('No messages available.', userLanguage),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final text = snapshot.data ?? 'No messages available.';
+          return Center(child: Text(text));
+        },
+      );
     }
 
     return ListView.builder(
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[index];
-        final subject = message['subject'] ?? 'No subject';
-        final body = message['body'] ?? '';
+        final subject = message['subject_translated'] ?? message['subject'] ?? 'No subject';
+        final body = message['body_translated'] ?? message['body'] ?? '';
         final sentAt = message['sent_at'] ?? '';
         final senderId = message['sender_id'] ?? '';
-        
-        // Lấy trạng thái sao riêng của người nhận trong internal_message_recipients
         final isStarred = message['is_starred_recip'] == true;
 
         return ListTile(
@@ -131,12 +214,12 @@ class MyListViewState extends State<MyListView> {
                   senderId: senderId,
                   receiverId: widget.currentUserId,
                   messageId: message['message_id'] ?? '',
-                )
+                ),
               ),
             );
 
             if (result == true) {
-              loadMessages(); 
+              await loadMessages();
             }
           },
           leading: CircleAvatar(
@@ -161,8 +244,7 @@ class MyListViewState extends State<MyListView> {
               ),
               const SizedBox(height: 4),
               GestureDetector(
-                onTap: () =>
-                    _toggleStar(message['message_id'], !isStarred),
+                onTap: () => _toggleStar(message['message_id'], !isStarred),
                 child: Icon(
                   isStarred ? Icons.star : Icons.star_border,
                   color: isStarred ? Colors.yellow : Colors.grey,
