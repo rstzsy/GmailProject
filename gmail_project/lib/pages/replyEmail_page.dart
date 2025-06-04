@@ -153,10 +153,11 @@ ${widget.originalBody}''';
 
       final draftId = await _messageService.saveDraft(
         senderId: currentUser.uid,
-        recipientPhone: recipientPhone,
+        recipientPhone: recipientPhone ?? '',
         subject: subject,
         body: body,
         draftId: _currentDraftId,
+        attachments: [], // Thêm dòng này
       );
 
       if (_currentDraftId == null) {

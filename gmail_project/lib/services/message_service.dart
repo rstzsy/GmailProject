@@ -9,7 +9,7 @@ class MessageService {
     required String recipientPhone,
     required String subject,
     required String body,
-    String? draftId,
+    String? draftId, required List<Map<String, String>> attachments,
   }) async {
     final timestamp = DateTime.now().toIso8601String();
     
