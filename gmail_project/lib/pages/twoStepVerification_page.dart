@@ -49,7 +49,7 @@ class _TwoStepVerificationPageState extends State<TwoStepVerificationPage> {
 
     try {
       // Tạo backup codes
-      final codes = _twoStepService.generateBackupCodes();
+      final codes = await _twoStepService.generateBackupCodes();
       
       // Lưu vào Firebase
       await _twoStepService.saveBackupCodes(codes);
@@ -218,50 +218,52 @@ class _TwoStepVerificationPageState extends State<TwoStepVerificationPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Header section
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFFF48FB1).withOpacity(0.1),
-                          const Color(0xFFD5C4F1).withOpacity(0.1),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFF48FB1).withOpacity(0.1),
+                            const Color(0xFFD5C4F1).withOpacity(0.1),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: const Color(0xFFF48FB1).withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            FontAwesomeIcons.shield,
+                            size: 50,
+                            color: isTwoStepEnabled ? const Color(0xFF4CAF50) : const Color(0xFFF48FB1),
+                          ),
+                          const SizedBox(height: 15),
+                          Text(
+                            isTwoStepEnabled ? 'Two-Step Verification Enabled' : 'Two-Step Verification Disabled',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            isTwoStepEnabled 
+                              ? 'Your account is protected with backup codes'
+                              : 'Add an extra layer of security to your account',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(
-                        color: const Color(0xFFF48FB1).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          FontAwesomeIcons.shield,
-                          size: 50,
-                          color: isTwoStepEnabled ? const Color(0xFF4CAF50) : const Color(0xFFF48FB1),
-                        ),
-                        const SizedBox(height: 15),
-                        Text(
-                          isTwoStepEnabled ? 'Two-Step Verification Enabled' : 'Two-Step Verification Disabled',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          isTwoStepEnabled 
-                            ? 'Your account is protected with backup codes'
-                            : 'Add an extra layer of security to your account',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
                     ),
                   ),
 
@@ -301,36 +303,38 @@ class _TwoStepVerificationPageState extends State<TwoStepVerificationPage> {
                     _buildInfoSection(),
 
                     const SizedBox(height: 30),
-
-                    Container(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: isUpdating ? null : _enableTwoStep,
-                        icon: isUpdating 
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(FontAwesomeIcons.shield, color: Colors.white),
-                        label: Text(
-                          isUpdating ? 'Enabling...' : 'Enable Two-Step Verification',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                    Align(
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: isUpdating ? null : _enableTwoStep,
+                          icon: isUpdating 
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(FontAwesomeIcons.shield, color: Colors.white),
+                          label: Text(
+                            isUpdating ? 'Enabling...' : 'Enable Two-Step Verification',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFF48FB1),
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF48FB1),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            elevation: 5,
                           ),
-                          elevation: 5,
                         ),
                       ),
                     ),

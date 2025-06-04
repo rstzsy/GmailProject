@@ -142,11 +142,27 @@ class TwoStepVerificationService {
     await _database.child('users/${user.uid}/two_step_verification').remove();
   }
 
-  // Tạo file backup codes để download
   Future<File> createBackupCodesFile(List<String> codes) async {
-    final directory = await getApplicationDocumentsDirectory();
+    Directory? directory;
+
+    try {
+      directory = await getApplicationDocumentsDirectory();
+    } catch (e) {
+      print('getApplicationDocumentsDirectory failed: $e');
+      try {
+        directory = await getTemporaryDirectory();
+        print('Using temporary directory as fallback');
+      } catch (e2) {
+        print('getTemporaryDirectory also failed: $e2');
+      }
+    }
+
+    if (directory == null) {
+      throw Exception('Could not access any directory for file storage');
+    }
+
     final file = File('${directory.path}/backup_codes.txt');
-    
+
     final buffer = StringBuffer();
     buffer.writeln('Gmail Project - Backup Codes');
     buffer.writeln('Generated: ${DateTime.now().toString()}');
@@ -157,18 +173,19 @@ class TwoStepVerificationService {
     buffer.writeln('');
     buffer.writeln('Backup Codes:');
     buffer.writeln('=============');
-    
+
     for (int i = 0; i < codes.length; i++) {
       buffer.writeln('${(i + 1).toString().padLeft(2, '0')}. ${codes[i]}');
     }
-    
+
     buffer.writeln('');
     buffer.writeln('After using a code, it will become invalid.');
     buffer.writeln('Generate new codes if you run out.');
-    
+
     await file.writeAsString(buffer.toString());
     return file;
   }
+
 
   // Đếm số backup codes còn lại
   Future<int> getRemainingCodesCount() async {
