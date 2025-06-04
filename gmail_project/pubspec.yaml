@@ -41,6 +41,8 @@ dependencies:
   permission_handler: ^11.0.1
   app_settings: ^5.1.1
   translator: ^0.1.7
+  provider: ^6.1.1
+  shared_preferences: ^2.2.3
 
 
   intl: ^0.18.1
