@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gmail_project/pages/editProfile_page.dart';
 import 'package:gmail_project/pages/languagSelection_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:translator/translator.dart'; // Add translator package
 import 'welcome_page.dart'; 
 import 'editProfile_page.dart';
 import 'languagSelection_page.dart';
@@ -20,7 +22,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   bool _isNotificationOn = true;
-  bool _isUpdatingNotification = false; // Add loading state for notification toggle
+  bool _isUpdatingNotification = false;
   File? _avatarImage;
 
   String username = '';
@@ -28,11 +30,113 @@ class _ProfilePageState extends State<ProfilePage> {
   String? avatarUrl;
   bool isLoading = true;
   bool isUploadingAvatar = false;
+  
+  // Translation related variables
+  String userLanguage = 'en';
+  final translator = GoogleTranslator();
+  late final DatabaseReference _languageRef;
+  StreamSubscription<DatabaseEvent>? _languageSubscription;
+  
+  // Translated text cache
+  Map<String, String> translatedTexts = {};
 
   @override
   void initState() {
     super.initState();
+    _initLanguageListener();
     fetchUserData();
+  }
+
+  @override
+  void dispose() {
+    _languageSubscription?.cancel();
+    super.dispose();
+  }
+
+  // Initialize language listener
+  Future<void> _initLanguageListener() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _languageRef = FirebaseDatabase.instance.ref('users/${user.uid}/language');
+      
+      // Listen for language changes
+      _languageSubscription = _languageRef.onValue.listen((event) async {
+        final newLang = event.snapshot.value?.toString() ?? 'en';
+        if (newLang != userLanguage) {
+          setState(() {
+            userLanguage = newLang;
+            translatedTexts.clear(); // Clear cache when language changes
+          });
+          await _translateAllTexts();
+        }
+      });
+      
+      // Get initial language
+      final snapshot = await _languageRef.get();
+      userLanguage = snapshot.value?.toString() ?? 'en';
+      await _translateAllTexts();
+    }
+  }
+
+  // Translate text function
+  Future<String> translateText(String text, String targetLang) async {
+    if (text.isEmpty) return text;
+    if (targetLang == 'en') return text;
+    
+    // Check cache first
+    final cacheKey = '${text}_$targetLang';
+    if (translatedTexts.containsKey(cacheKey)) {
+      return translatedTexts[cacheKey]!;
+    }
+    
+    try {
+      final translation = await translator.translate(text, to: targetLang);
+      translatedTexts[cacheKey] = translation.text;
+      return translation.text;
+    } catch (e) {
+      print("Translate error: $e");
+      return text;
+    }
+  }
+
+  // Translate all UI texts
+  Future<void> _translateAllTexts() async {
+    if (userLanguage == 'en') return;
+    
+    final textsToTranslate = [
+      'Profile',
+      'Phone',
+      'Notifications',
+      'Edit Profile',
+      'Languages',
+      'Logout',
+      'UX/UI Designer',
+      'Select Image Source',
+      'Photo Library',
+      'Take Photo',
+      'Error',
+      'Success',
+      'OK',
+      'Avatar updated successfully!',
+      'Notifications enabled. You\'ll receive notifications for new messages.',
+      'Notifications disabled. You won\'t receive any notifications.',
+      'Failed to update notification setting. Please try again.',
+    ];
+
+    for (String text in textsToTranslate) {
+      await translateText(text, userLanguage);
+    }
+    
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  // Helper method to get translated text
+  String getTranslatedText(String originalText) {
+    if (userLanguage == 'en') return originalText;
+    final cacheKey = '${originalText}_$userLanguage';
+    return translatedTexts[cacheKey] ?? originalText;
   }
 
   Future<void> fetchUserData() async {
@@ -57,7 +161,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // Improved notification setting update with better error handling
   Future<void> _updateNotificationSetting(bool value) async {
     setState(() {
       _isUpdatingNotification = true;
@@ -71,16 +174,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
       final dbRef = FirebaseDatabase.instance.ref('users/${user.uid}');
       
-      // Use a transaction to ensure atomic update
       await dbRef.update({
         'notification_enabled': value,
-        'notification_updated_at': ServerValue.timestamp, // Use server timestamp
+        'notification_updated_at': ServerValue.timestamp,
       });
       
-      // Wait a bit to ensure the write is propagated
       await Future.delayed(const Duration(milliseconds: 500));
       
-      // Verify the update was successful
       final snapshot = await dbRef.child('notification_enabled').get();
       final actualValue = snapshot.value as bool? ?? true;
       
@@ -132,21 +232,27 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text(
-            'Select Image Source',
-            style: TextStyle(color: Colors.white),
+          title: Text(
+            getTranslatedText('Select Image Source'),
+            style: const TextStyle(color: Colors.white),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
                 leading: const Icon(Icons.photo_library, color: Color(0xFFF48FB1)),
-                title: const Text('Photo Library', style: TextStyle(color: Colors.white)),
+                title: Text(
+                  getTranslatedText('Photo Library'), 
+                  style: const TextStyle(color: Colors.white)
+                ),
                 onTap: () => Navigator.pop(context, ImageSource.gallery),
               ),
               ListTile(
                 leading: const Icon(Icons.camera_alt, color: Color(0xFFF48FB1)),
-                title: const Text('Take Photo', style: TextStyle(color: Colors.white)),
+                title: Text(
+                  getTranslatedText('Take Photo'), 
+                  style: const TextStyle(color: Colors.white)
+                ),
                 onTap: () => Navigator.pop(context, ImageSource.camera),
               ),
             ],
@@ -179,7 +285,7 @@ class _ProfilePageState extends State<ProfilePage> {
         isUploadingAvatar = false;
       });
 
-      _showSuccessDialog("Avatar updated successfully!");
+      _showSuccessDialog(getTranslatedText("Avatar updated successfully!"));
     } catch (e) {
       setState(() {
         isUploadingAvatar = false;
@@ -193,12 +299,12 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Error', style: TextStyle(color: Colors.white)),
+        title: Text(getTranslatedText('Error'), style: const TextStyle(color: Colors.white)),
         content: Text(message, style: const TextStyle(color: Colors.white)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Color(0xFFF48FB1))),
+            child: Text(getTranslatedText('OK'), style: const TextStyle(color: Color(0xFFF48FB1))),
           ),
         ],
       ),
@@ -210,12 +316,12 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Success', style: TextStyle(color: Colors.white)),
+        title: Text(getTranslatedText('Success'), style: const TextStyle(color: Colors.white)),
         content: Text(message, style: const TextStyle(color: Colors.white)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Color(0xFFF48FB1))),
+            child: Text(getTranslatedText('OK'), style: const TextStyle(color: Color(0xFFF48FB1))),
           ),
         ],
       ),
@@ -318,7 +424,10 @@ class _ProfilePageState extends State<ProfilePage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        title: const Text('Profile', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)),
+        title: Text(
+          getTranslatedText('Profile'), 
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)
+        ),
         iconTheme: const IconThemeData(color: Color(0xFFF48FB1)),
       ),
       body: SafeArea(
@@ -336,29 +445,31 @@ class _ProfilePageState extends State<ProfilePage> {
                       margin: const EdgeInsets.only(top: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Color(0xFFffcad4),
+                        color: const Color(0xFFffcad4),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(FontAwesomeIcons.handHoldingHeart, color: Color(0xFFE21033), size: 18),
-                          SizedBox(width: 5),
-                          Text("UX/UI Designer", style: TextStyle(fontSize: 14, color: Colors.black)),
+                        children: [
+                          const Icon(FontAwesomeIcons.handHoldingHeart, color: Color(0xFFE21033), size: 18),
+                          const SizedBox(width: 5),
+                          Text(
+                            getTranslatedText("UX/UI Designer"), 
+                            style: const TextStyle(fontSize: 14, color: Colors.black)
+                          ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 30),
                     Column(
                       children: [
-                        _buildInfoCard(Icons.phone, "Phone", phone),
+                        _buildInfoCard(Icons.phone, getTranslatedText("Phone"), phone),
                       ],
                     ),
                     const SizedBox(height: 30),
-                    // Improved notification section with loading state
                     _buildListTile(
                       Icons.notifications,
-                      "Notifications",
+                      getTranslatedText("Notifications"),
                       const Color(0xFFFF80AB),
                       null,
                       _isUpdatingNotification 
@@ -376,7 +487,6 @@ class _ProfilePageState extends State<ProfilePage> {
                             onChanged: _isUpdatingNotification ? null : (value) async {
                               print('Switch toggled to: $value');
                               
-                              // Optimistically update UI
                               final previousValue = _isNotificationOn;
                               setState(() {
                                 _isNotificationOn = value;
@@ -385,10 +495,9 @@ class _ProfilePageState extends State<ProfilePage> {
                               try {
                                 await _updateNotificationSetting(value);
                                 
-                                // Show success message
                                 String message = value 
-                                  ? "Notifications enabled. You'll receive notifications for new messages."
-                                  : "Notifications disabled. You won't receive any notifications.";
+                                  ? getTranslatedText("Notifications enabled. You'll receive notifications for new messages.")
+                                  : getTranslatedText("Notifications disabled. You won't receive any notifications.");
                                 
                                 _showSuccessDialog(message);
                                 
@@ -397,12 +506,11 @@ class _ProfilePageState extends State<ProfilePage> {
                               } catch (e) {
                                 print('Failed to update notification setting: $e');
                                 
-                                // Rollback UI state on error
                                 setState(() {
                                   _isNotificationOn = previousValue;
                                 });
                                 
-                                _showErrorDialog('Failed to update notification setting. Please try again.');
+                                _showErrorDialog(getTranslatedText('Failed to update notification setting. Please try again.'));
                               }
                             },
                           ),
@@ -410,8 +518,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
                     _buildListTile(
                       FontAwesomeIcons.userSecret,
-                      "Edit Profile",
-                      Color(0xFF4CC9FE),
+                      getTranslatedText("Edit Profile"),
+                      const Color(0xFF4CC9FE),
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => const EditProfilePage()),
@@ -421,8 +529,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     _buildListTile(
                       FontAwesomeIcons.language,
-                      "Languages",
-                      Color(0xFFFFB300),
+                      getTranslatedText("Languages"),
+                      const Color(0xFFFFB300),
                       () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LanguageSelectionPage())),
                     ),
                     const Spacer(),
@@ -438,7 +546,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           );
                         },
                         icon: const Icon(FontAwesomeIcons.arrowRightFromBracket, color: Color(0xFFE21033)),
-                        label: const Text("Logout", style: TextStyle(color: Colors.black)),
+                        label: Text(
+                          getTranslatedText("Logout"), 
+                          style: const TextStyle(color: Colors.black)
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color.fromARGB(255, 255, 230, 238),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
@@ -459,18 +570,18 @@ class _ProfilePageState extends State<ProfilePage> {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color.fromARGB(255, 255, 230, 238),
+        color: const Color.fromARGB(255, 255, 230, 238),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: Offset(0, 4)),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
         ],
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: Color(0xFFE21033).withOpacity(0.1),
-            child: Icon(icon, color: Color(0xFFE21033)),
+            backgroundColor: const Color(0xFFE21033).withOpacity(0.1),
+            child: Icon(icon, color: const Color(0xFFE21033)),
           ),
           const SizedBox(width: 16),
           Column(
