@@ -1,10 +1,15 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'two_step_verification_service.dart';
+import 'package:dio/dio.dart';
+import 'dart:convert';  
+import 'package:crypto/crypto.dart'; 
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
+  final Dio _dio = Dio();
 
   // Kiểm tra người dùng đã đăng nhập chưa
   bool _isUserAuthenticated() {
@@ -119,6 +124,17 @@ class AuthService {
     return await updateNotificationSettings(user.uid, settings);
   }
 
+  // Kiểm tra xem user có bật Two-Step Verification không
+  Future<bool> isTwoStepEnabled(String uid) async {
+    try {
+      final snapshot = await _dbRef.child('users/$uid/two_step_verification/enabled').get();
+      return snapshot.exists ? snapshot.value as bool : false;
+    } catch (e) {
+      print('Error checking two-step status: $e');
+      return false;
+    }
+  }
+
   // Đăng ký tài khoản
   Future<String?> signUp({
     required String phone,
@@ -189,8 +205,8 @@ class AuthService {
     }
   }
 
-  // Đăng nhập
-  Future<String?> signIn({
+  // Đăng nhập - UPDATED để hỗ trợ Two-Step Verification
+  Future<Map<String, dynamic>> signIn({
     required String phone,
     required String password,
   }) async {
@@ -204,29 +220,314 @@ class AuthService {
       );
 
       if (userCredential.user != null) {
-        print(' User signed in successfully: ${userCredential.user!.uid}');
-        return null;
+        // Kiểm tra xem user có bật Two-Step Verification không
+        final twoStepEnabled = await isTwoStepEnabled(userCredential.user!.uid);
+        
+        if (twoStepEnabled) {
+          // Nếu có bật 2FA, đăng xuất tạm thời và yêu cầu backup code
+          await _auth.signOut();
+          
+          return {
+            'success': false,
+            'requiresTwoStep': true,
+            'userId': userCredential.user!.uid,
+            'phone': normalizedPhone,
+            'password': password,
+            'message': 'Two-step verification required'
+          };
+        } else {
+          // Đăng nhập thành công bình thường
+          print(' User signed in successfully: ${userCredential.user!.uid}');
+          return {
+            'success': true,
+            'requiresTwoStep': false,
+            'message': 'Login successful'
+          };
+        }
       } else {
-        return "Không thể đăng nhập. Vui lòng thử lại.";
+        return {
+          'success': false,
+          'requiresTwoStep': false,
+          'message': "Không thể đăng nhập. Vui lòng thử lại."
+        };
       }
     } on FirebaseAuthException catch (e) {
       print(' Sign in error: ${e.code} - ${e.message}');
+      String errorMessage;
       switch (e.code) {
         case 'user-not-found':
-          return 'Không tìm thấy tài khoản với số điện thoại này.';
+          errorMessage = 'Không tìm thấy tài khoản với số điện thoại này.';
+          break;
         case 'wrong-password':
-          return 'Mật khẩu không chính xác.';
+          errorMessage = 'Mật khẩu không chính xác.';
+          break;
         case 'too-many-requests':
-          return 'Quá nhiều lần thử. Vui lòng thử lại sau.';
+          errorMessage = 'Quá nhiều lần thử. Vui lòng thử lại sau.';
+          break;
         default:
-          return e.message ?? 'Lỗi đăng nhập không xác định.';
+          errorMessage = e.message ?? 'Lỗi đăng nhập không xác định.';
       }
+      return {
+        'success': false,
+        'requiresTwoStep': false,
+        'message': errorMessage
+      };
     } catch (e) {
       print(' General sign in error: $e');
-      return 'Lỗi hệ thống: $e';
+      return {
+        'success': false,
+        'requiresTwoStep': false,
+        'message': 'Lỗi hệ thống: $e'
+      };
     }
   }
 
+  // Xác thực backup code từ Firebase Database và đăng nhập - FIXED VERSION
+  Future<Map<String, dynamic>> verifyBackupCodeAndSignIn({
+    required String userId,
+    required String phone,
+    required String password,
+    required String backupCode,
+  }) async {
+    try {
+      print('🔍 DEBUG: Starting backup code verification');
+      print('🔍 DEBUG: UserId: $userId');
+      print('🔍 DEBUG: Input backup code: "$backupCode"');
+      print('🔍 DEBUG: Backup code length: ${backupCode.length}');
+
+      // Đăng nhập trước để có quyền truy cập
+      final normalizedPhone = normalizePhoneNumber(phone);
+      final fakeEmail = "$normalizedPhone@example.com";
+
+      final userCredential = await _auth.signInWithEmailAndPassword(
+        email: fakeEmail,
+        password: password,
+      );
+
+      if (userCredential.user == null) {
+        return {
+          'success': false,
+          'message': 'Không thể xác thực tài khoản.'
+        };
+      }
+
+      print('✅ DEBUG: User authenticated successfully');
+
+      // Truy cập dữ liệu two-step verification
+      final userRef = _dbRef.child('users').child(userId).child('two_step_verification');
+      final snapshot = await userRef.get();
+
+      if (!snapshot.exists) {
+        print('❌ DEBUG: No two-step verification data found');
+        await _auth.signOut();
+        return {
+          'success': false,
+          'message': 'Không tìm thấy dữ liệu xác thực hai bước.'
+        };
+      }
+
+      print('✅ DEBUG: Two-step verification data found');
+      final data = Map<String, dynamic>.from(snapshot.value as Map);
+      print('🔍 DEBUG: Full data structure: $data');
+
+      // Chuẩn hóa input code
+      String cleanedInputCode = backupCode.trim().toUpperCase();
+      print('🔍 DEBUG: Cleaned input code: "$cleanedInputCode"');
+
+      // Kiểm tra backup_codes array - FIXED VERSION
+      if (data.containsKey('backup_codes')) {
+        final backupCodes = data['backup_codes'];
+        print('🔍 DEBUG: Found backup_codes structure: $backupCodes');
+        
+        // Kiểm tra nếu backup_codes là List (Array)
+        if (backupCodes is List) {
+          print('🔍 DEBUG: Backup codes is a List with ${backupCodes.length} items');
+          
+          for (int i = 0; i < backupCodes.length; i++) {
+            final codeData = backupCodes[i];
+            print('🔍 DEBUG: Checking code at index $i: $codeData');
+            
+            if (codeData is Map) {
+              final codeInfo = Map<String, dynamic>.from(codeData);
+              final isUsed = codeInfo['used'] == true;
+              final storedCode = codeInfo['code']?.toString() ?? '';
+              
+              print('🔍 DEBUG: Code $i - stored: "$storedCode", used: $isUsed');
+              
+              if (!isUsed && storedCode.isNotEmpty) {
+                String cleanedStoredCode = storedCode.trim().toUpperCase();
+                
+                // So sánh trực tiếp (plain text)
+                if (cleanedInputCode == cleanedStoredCode) {
+                  print('✅ DEBUG: Direct match found for code at index $i!');
+                  
+                  // Đánh dấu đã sử dụng
+                  await _markBackupCodeAsUsedByIndex(userId, i);
+                  
+                  return {
+                    'success': true,
+                    'message': 'Đăng nhập thành công với mã backup.'
+                  };
+                }
+                
+                // Thử các format khác nhau (với/không có dấu gạch ngang)
+                List<String> variations = _generateCodeVariations(cleanedInputCode);
+                for (String variation in variations) {
+                  if (variation == cleanedStoredCode) {
+                    print('✅ DEBUG: Variation match found: "$variation" for code at index $i!');
+                    
+                    await _markBackupCodeAsUsedByIndex(userId, i);
+                    
+                    return {
+                      'success': true,
+                      'message': 'Đăng nhập thành công với mã backup.'
+                    };
+                  }
+                }
+              }
+            }
+          }
+        } 
+        // Nếu vẫn là Map (fallback cho trường hợp cũ)
+        else if (backupCodes is Map) {
+          final codesMap = Map<String, dynamic>.from(backupCodes);
+          print('🔍 DEBUG: Backup codes is a Map with ${codesMap.length} keys');
+          
+          for (String key in codesMap.keys) {
+            final codeData = codesMap[key];
+            print('🔍 DEBUG: Checking code $key: $codeData');
+            
+            if (codeData is Map) {
+              final codeInfo = Map<String, dynamic>.from(codeData);
+              final isUsed = codeInfo['used'] == true;
+              final storedCode = codeInfo['code']?.toString() ?? '';
+              
+              print('🔍 DEBUG: Code $key - stored: "$storedCode", used: $isUsed');
+              
+              if (!isUsed && storedCode.isNotEmpty) {
+                String cleanedStoredCode = storedCode.trim().toUpperCase();
+                
+                // So sánh trực tiếp (plain text)
+                if (cleanedInputCode == cleanedStoredCode) {
+                  print('✅ DEBUG: Direct match found for code $key!');
+                  
+                  // Đánh dấu đã sử dụng
+                  await _markBackupCodeAsUsed(userId, key);
+                  
+                  return {
+                    'success': true,
+                    'message': 'Đăng nhập thành công với mã backup.'
+                  };
+                }
+                
+                // Thử các format khác nhau (với/không có dấu gạch ngang)
+                List<String> variations = _generateCodeVariations(cleanedInputCode);
+                for (String variation in variations) {
+                  if (variation == cleanedStoredCode) {
+                    print('✅ DEBUG: Variation match found: "$variation" for code $key!');
+                    
+                    await _markBackupCodeAsUsed(userId, key);
+                    
+                    return {
+                      'success': true,
+                      'message': 'Đăng nhập thành công với mã backup.'
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      print('❌ DEBUG: No matching backup code found');
+      await _auth.signOut();
+      return {
+        'success': false,
+        'message': 'Mã backup không chính xác.'
+      };
+
+    } catch (e, stackTrace) {
+      print('❌ DEBUG: Error in verifyBackupCodeAndSignIn: $e');
+      print('🔍 DEBUG: Stacktrace: $stackTrace');
+      
+      try {
+        await _auth.signOut();
+      } catch (signOutError) {
+        print('⚠️ DEBUG: Sign out error: $signOutError');
+      }
+
+      return {
+        'success': false,
+        'message': 'Lỗi hệ thống khi xác minh mã backup.'
+      };
+    }
+  }
+
+  // Helper methods - loại bỏ hash-related methods
+  List<String> _generateCodeVariations(String code) {
+    List<String> variations = [];
+    
+    // Original
+    variations.add(code);
+    
+    // Lowercase
+    variations.add(code.toLowerCase());
+    
+    // With dash if not present
+    if (!code.contains('-') && code.length == 8) {
+      variations.add('${code.substring(0, 4)}-${code.substring(4)}');
+      variations.add('${code.substring(0, 4)}-${code.substring(4)}'.toLowerCase());
+    }
+    
+    // Without dash if present
+    if (code.contains('-')) {
+      variations.add(code.replaceAll('-', ''));
+      variations.add(code.replaceAll('-', '').toLowerCase());
+    }
+    
+    // With spaces
+    if (!code.contains(' ') && code.length == 8) {
+      variations.add('${code.substring(0, 4)} ${code.substring(4)}');
+    }
+    
+    return variations;
+  }
+
+  // Đánh dấu backup code đã sử dụng theo Map key
+  Future<void> _markBackupCodeAsUsed(String userId, String codeKey) async {
+    try {
+      final codeRef = _dbRef.child('users').child(userId)
+          .child('two_step_verification').child('backup_codes').child(codeKey);
+      
+      await codeRef.update({
+        'used': true,
+        'used_at': ServerValue.timestamp,
+      });
+      
+      print('✅ DEBUG: Marked code $codeKey as used');
+    } catch (e) {
+      print('⚠️ DEBUG: Failed to mark backup code as used: $e');
+    }
+  }
+
+  // Đánh dấu backup code đã sử dụng theo Array index
+  Future<void> _markBackupCodeAsUsedByIndex(String userId, int index) async {
+    try {
+      final codeRef = _dbRef.child('users').child(userId)
+          .child('two_step_verification').child('backup_codes').child(index.toString());
+      
+      await codeRef.update({
+        'used': true,
+        'used_at': ServerValue.timestamp,
+      });
+      
+      print('✅ DEBUG: Marked code at index $index as used');
+    } catch (e) {
+      print('⚠️ DEBUG: Failed to mark backup code as used: $e');
+    }
+  }
+  
   // Đặt lại mật khẩu theo số điện thoại
   Future<String?> resetPassword({
     required String phoneNumber,
@@ -270,11 +571,6 @@ class AuthService {
       return 'Lỗi: ${e.toString()}';
     }
   }
-
-
-
-
-
 
   // Đăng xuất
   Future<void> signOut() async {

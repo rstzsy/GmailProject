@@ -12,6 +12,8 @@ import 'languagSelection_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'twoStepVerification_page.dart';
+
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -532,6 +534,15 @@ class _ProfilePageState extends State<ProfilePage> {
                       getTranslatedText("Languages"),
                       const Color(0xFFFFB300),
                       () => Navigator.push(context, MaterialPageRoute(builder: (context) => const LanguageSelectionPage())),
+                    ),
+                    _buildListTile(
+                      FontAwesomeIcons.shield,
+                      getTranslatedText("Two-Step Verification"),
+                      const Color(0xFF4CAF50),
+                      () => Navigator.push(
+                        context, 
+                        MaterialPageRoute(builder: (context) => const TwoStepVerificationPage())
+                      ),
                     ),
                     const Spacer(),
                     Container(
