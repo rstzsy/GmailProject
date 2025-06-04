@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/message_service.dart';
 import 'replyEmail_page.dart'; 
 import 'forwardEmail_page.dart';
@@ -36,9 +37,11 @@ class EmailDetailPage extends StatefulWidget {
 class _EmailDetailPageState extends State<EmailDetailPage> {
   bool showContent = true;
   bool isLoadingUserInfo = true;
+  bool isLoadingAttachments = true;
   String displaySenderName = '';
   String displaySenderTitle = '';
   String displayReceiverName = '';
+  List<Map<String, String>> attachments = [];
 
   bool isTrashDetail = false;
 
@@ -49,6 +52,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   void initState() {
     super.initState();
     _loadUserInfo();
+    _loadAttachments();
     _markMessageAsRead();
 
     // Kiểm tra route name để xác định có phải đang xem thư trong thùng rác không
@@ -60,6 +64,43 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         });
       }
     });
+  }
+
+  // Load attachments từ Firebase
+  Future<void> _loadAttachments() async {
+    try {
+      if (widget.messageId == null) {
+        setState(() {
+          isLoadingAttachments = false;
+        });
+        return;
+      }
+
+      final messageSnapshot = await _db
+          .child('internal_messages')
+          .child(widget.messageId!)
+          .get();
+
+      if (messageSnapshot.exists) {
+        final messageData = messageSnapshot.value as Map<dynamic, dynamic>;
+        if (messageData.containsKey('attachments')) {
+          final attachmentsData = messageData['attachments'];
+          if (attachmentsData is List) {
+            attachments = attachmentsData
+                .map((item) => Map<String, String>.from(item as Map))
+                .toList();
+          }
+        }
+      }
+    } catch (e) {
+      print('Error loading attachments: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingAttachments = false;
+        });
+      }
+    }
   }
 
   // Function để đánh dấu thư đã đọc
@@ -168,6 +209,171 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     setState(() {
       showContent = !showContent;
     });
+  }
+
+  // Function để download/mở attachment
+  Future<void> _openAttachment(String url, String fileName) async {
+    try {
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Cannot open $fileName')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening $fileName: $e')),
+        );
+      }
+    }
+  }
+
+  // Function để format file size
+  String _formatFileSize(String sizeStr) {
+    try {
+      final size = int.parse(sizeStr);
+      if (size < 1024) {
+        return '${size}B';
+      } else if (size < 1024 * 1024) {
+        return '${(size / 1024).toStringAsFixed(1)}KB';
+      } else {
+        return '${(size / (1024 * 1024)).toStringAsFixed(1)}MB';
+      }
+    } catch (e) {
+      return sizeStr;
+    }
+  }
+
+  // Function để lấy icon cho file type
+  IconData _getFileIcon(String fileType) {
+    switch (fileType.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return Icons.image;
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'mp4':
+      case 'avi':
+      case 'mov':
+        return Icons.video_file;
+      case 'mp3':
+      case 'wav':
+        return Icons.audio_file;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  // Widget để hiển thị attachments
+  Widget _buildAttachmentsSection() {
+    if (isLoadingAttachments) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFFffcad4),
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
+
+    if (attachments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            const Icon(Icons.attach_file, color: Colors.white70, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Attachments (${attachments.length})',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...attachments.map((attachment) => _buildAttachmentItem(attachment)),
+      ],
+    );
+  }
+
+  Widget _buildAttachmentItem(Map<String, String> attachment) {
+    final fileName = attachment['name'] ?? 'Unknown File';
+    final fileSize = attachment['size'] ?? '0';
+    final fileType = attachment['type'] ?? '';
+    final fileUrl = attachment['url'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2C),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: InkWell(
+        onTap: () => _openAttachment(fileUrl, fileName),
+        child: Row(
+          children: [
+            Icon(
+              _getFileIcon(fileType),
+              color: const Color(0xFFffcad4),
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fileName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatFileSize(fileSize),
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.download,
+              color: Colors.white54,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleDelete() async {
@@ -295,13 +501,28 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
+        title: attachments.isNotEmpty
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.attach_file, color: Color(0xFFffcad4), size: 18),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${attachments.length}',
+                    style: const TextStyle(
+                      color: Color(0xFFffcad4),
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              )
+            : null,
         actions: [
           if (!isTrashDetail)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.white),
               onPressed: _handleDelete,
             ),
-      
           IconButton(
             icon: const Icon(Icons.mail_outline, color: Colors.white),
             onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
@@ -393,6 +614,8 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                 widget.body,
                 style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
               ),
+            // Hiển thị attachments
+            _buildAttachmentsSection(),
           ],
         ),
       ),

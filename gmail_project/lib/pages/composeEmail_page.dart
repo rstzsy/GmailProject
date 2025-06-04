@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../components/dialog.dart';
 import '../services/message_service.dart';
 
@@ -32,10 +33,14 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
   final TextEditingController bodyController = TextEditingController();
 
   final ImagePicker _picker = ImagePicker();
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  
   List<XFile> _attachedImages = [];
+  List<Map<String, String>> _uploadedAttachments = []; // Lưu thông tin file đã upload
   final MessageService _messageService = MessageService();
   
   bool _hasUnsavedChanges = false;
+  bool _isUploading = false;
   String? _currentDraftId;
 
   @override
@@ -94,6 +99,60 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     }
   }
 
+  // Upload tất cả attachments lên Firebase Storage
+  Future<List<Map<String, String>>> _uploadAttachments() async {
+    if (_attachedImages.isEmpty) return [];
+
+    setState(() {
+      _isUploading = true;
+    });
+
+    List<Map<String, String>> uploadedFiles = [];
+    final auth = FirebaseAuth.instance;
+    final currentUser = auth.currentUser;
+    
+    if (currentUser == null) return [];
+
+    try {
+      for (int i = 0; i < _attachedImages.length; i++) {
+        final file = _attachedImages[i];
+        
+        // Tạo tên file unique
+        final fileName = 'attachment_${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}_$i.${file.path.split('.').last}';
+        final ref = _storage.ref().child('message_attachments/$fileName');
+
+        // Upload file
+        final uploadTask = ref.putFile(File(file.path));
+        final snapshot = await uploadTask;
+        
+        // Lấy download URL
+        final downloadUrl = await snapshot.ref.getDownloadURL();
+        
+        // Lưu thông tin file
+        uploadedFiles.add({
+          'name': file.name,
+          'url': downloadUrl,
+          'size': (await File(file.path).length()).toString(),
+          'type': file.path.split('.').last.toLowerCase(),
+        });
+      }
+    } catch (e) {
+      CustomDialog.show(
+        context,
+        title: "Error",
+        content: "Failed to upload attachments: $e",
+        icon: Icons.error_outline,
+      );
+      return [];
+    } finally {
+      setState(() {
+        _isUploading = false;
+      });
+    }
+
+    return uploadedFiles;
+  }
+
   Future<void> _saveDraft() async {
     final auth = FirebaseAuth.instance;
     final currentUser = auth.currentUser;
@@ -104,17 +163,28 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     final body = bodyController.text.trim();
 
     // Chỉ lưu draft nếu có nội dung
-    if (toPhone.isEmpty && subject.isEmpty && body.isEmpty) {
+    if (toPhone.isEmpty && subject.isEmpty && body.isEmpty && _attachedImages.isEmpty) {
       return;
     }
 
     try {
+      // Upload attachments nếu có
+      List<Map<String, String>> attachments = [];
+      if (_attachedImages.isNotEmpty) {
+        attachments = await _uploadAttachments();
+        if (attachments.isNotEmpty) {
+          _uploadedAttachments = attachments;
+          _attachedImages.clear(); // Clear local images after upload
+        }
+      }
+
       final draftId = await _messageService.saveDraft(
         senderId: currentUser.uid,
         recipientPhone: toPhone,
         subject: subject,
         body: body,
         draftId: _currentDraftId,
+        attachments: _uploadedAttachments, // Thêm attachments vào draft
       );
 
       if (_currentDraftId == null) {
@@ -142,6 +212,16 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
   }
 
   Future<void> _sendEmail() async {
+    if (_isUploading) {
+      CustomDialog.show(
+        context,
+        title: "Please wait",
+        content: "Files are still uploading...",
+        icon: Icons.info_outline,
+      );
+      return;
+    }
+
     final database = FirebaseDatabase.instance.ref();
     final auth = FirebaseAuth.instance;
 
@@ -180,13 +260,21 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     }
 
     try {
+      // Upload attachments trước khi gửi
+      List<Map<String, String>> finalAttachments = List.from(_uploadedAttachments);
+      if (_attachedImages.isNotEmpty) {
+        final newAttachments = await _uploadAttachments();
+        finalAttachments.addAll(newAttachments);
+      }
+
       // Gửi thư
       final messageRef = database.child('internal_messages').push();
       final messageId = messageRef.key!;
 
       print('Creating message with ID: $messageId');
 
-      await messageRef.set({
+      // Tạo message data với attachments
+      Map<String, dynamic> messageData = {
         'sender_id': fromUid,
         'subject': subject,
         'body': body,
@@ -195,9 +283,16 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         'is_starred': false,
         'is_read': false,
         'is_trashed': false,
-      });
+      };
 
-      print('Message created successfully');
+      // Thêm attachments nếu có
+      if (finalAttachments.isNotEmpty) {
+        messageData['attachments'] = finalAttachments;
+      }
+
+      await messageRef.set(messageData);
+
+      print('Message created successfully with ${finalAttachments.length} attachments');
 
       // Lưu người nhận
       await database
@@ -231,7 +326,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         final notificationRef = database.child('notifications').child(recipientUid).push();
         final notificationData = {
           'title': 'You have a new message',
-          'body': 'From: $fromEmail\nSubject: $subject',
+          'body': 'From: $fromEmail\nSubject: $subject${finalAttachments.isNotEmpty ? '\n📎 ${finalAttachments.length} attachment(s)' : ''}',
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'sender_id': fromUid,
           'message_id': messageId,
@@ -265,6 +360,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
       bodyController.clear();
       setState(() {
         _attachedImages.clear();
+        _uploadedAttachments.clear();
         _hasUnsavedChanges = false;
       });
 
@@ -289,6 +385,147 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         content: "Failed to send email: $e",
         icon: Icons.error_outline,
       );
+    }
+  }
+
+  void _removeAttachment(int index) {
+    setState(() {
+      if (index < _attachedImages.length) {
+        _attachedImages.removeAt(index);
+      } else {
+        _uploadedAttachments.removeAt(index - _attachedImages.length);
+      }
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  Widget _buildAttachmentsSection() {
+    final allAttachments = [
+      ..._attachedImages.map((file) => {'type': 'local', 'data': file}),
+      ..._uploadedAttachments.map((file) => {'type': 'uploaded', 'data': file}),
+    ];
+
+    if (allAttachments.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Attachments:',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 120,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: allAttachments.length,
+            itemBuilder: (context, index) {
+              final attachment = allAttachments[index];
+              final isLocal = attachment['type'] == 'local';
+              
+              return Container(
+                width: 100,
+                margin: const EdgeInsets.only(right: 8),
+                child: Stack(
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white54),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: isLocal
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(
+                                File((attachment['data'] as XFile).path),
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    _getFileIcon((attachment['data'] as Map<String, String>)['type'] ?? ''),
+                                    color: Colors.white,
+                                    size: 30,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    (attachment['data'] as Map<String, String>)['name'] ?? '',
+                                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                    Positioned(
+                      top: 2,
+                      right: 2,
+                      child: GestureDetector(
+                        onTap: () => _removeAttachment(index),
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (isLocal && _isUploading)
+                      const Positioned.fill(
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFFffcad4),
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  IconData _getFileIcon(String fileType) {
+    switch (fileType.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return Icons.image;
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'mp4':
+      case 'avi':
+      case 'mov':
+        return Icons.video_file;
+      case 'mp3':
+      case 'wav':
+        return Icons.audio_file;
+      default:
+        return Icons.insert_drive_file;
     }
   }
 
@@ -403,47 +640,44 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                 style: const TextStyle(color: Colors.white),
               ),
               Expanded(
-                child: TextField(
-                  controller: bodyController,
-                  decoration: const InputDecoration(
-                    labelText: 'Content',
-                    labelStyle: TextStyle(color: Colors.white),
-                    border: InputBorder.none,
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: null,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: bodyController,
+                        decoration: const InputDecoration(
+                          labelText: 'Content',
+                          labelStyle: TextStyle(color: Colors.white),
+                          border: InputBorder.none,
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: null,
+                      ),
+                    ),
+                    _buildAttachmentsSection(),
+                  ],
                 ),
               ),
-              if (_attachedImages.isNotEmpty)
-                SizedBox(
-                  height: 100,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _attachedImages.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: Image.file(
-                          File(_attachedImages[index].path),
-                          width: 100,
-                          height: 100,
-                          fit: BoxFit.cover,
-                        ),
-                      );
-                    },
-                  ),
-                ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.image, color: Color(0xFFF4538A)),
-                      label: const Text(
-                        'Add Files',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      icon: _isUploading 
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFF4538A),
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.image, color: Color(0xFFF4538A)),
+                      label: Text(
+                        _isUploading ? 'Uploading...' : 'Add Files',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                       ),
-                      onPressed: _pickImages,
+                      onPressed: _isUploading ? null : _pickImages,
                       style: ElevatedButton.styleFrom(
                         foregroundColor: const Color(0xFFF4538A),
                         backgroundColor: const Color(0xFFffcad4),
@@ -453,7 +687,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _sendEmail,
+                      onPressed: _isUploading ? null : _sendEmail,
                       icon: const Icon(Icons.send, color: Color(0xFFF4538A)),
                       label: const Text(
                         'Send',

@@ -330,6 +330,7 @@ ${widget.originalBody}''';
         subject: subject,
         body: body,
         draftId: _currentDraftId,
+        attachments: [], // Thêm dòng này
       );
 
       if (_currentDraftId == null) {
