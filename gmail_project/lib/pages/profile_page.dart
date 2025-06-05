@@ -13,6 +13,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'twoStepVerification_page.dart';
+import './chat_page.dart';
 
 
 class ProfilePage extends StatefulWidget {
@@ -110,7 +111,9 @@ class _ProfilePageState extends State<ProfilePage> {
       'Phone',
       'Notifications',
       'Edit Profile',
+      'Chat Bot',
       'Languages',
+      'Two-Step Verification',
       'Logout',
       'UX/UI Designer',
       'Select Image Source',
@@ -543,6 +546,17 @@ class _ProfilePageState extends State<ProfilePage> {
                         context, 
                         MaterialPageRoute(builder: (context) => const TwoStepVerificationPage())
                       ),
+                    ),
+                    _buildListTile(
+                      FontAwesomeIcons.headset,
+                      getTranslatedText("Chat Bot"),
+                      const Color.fromARGB(255, 201, 153, 246),
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ChatBotPage()),
+                      ).then((value) {
+                        fetchUserData();
+                      })
                     ),
                     const Spacer(),
                     Container(
