@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -29,26 +30,47 @@ class ComposeEmailPage extends StatefulWidget {
 class _ComposeEmailPageState extends State<ComposeEmailPage> {
   final TextEditingController fromController = TextEditingController();
   final TextEditingController toController = TextEditingController();
+  final TextEditingController ccController = TextEditingController();
+  final TextEditingController bccController = TextEditingController();
   final TextEditingController subjectController = TextEditingController();
-  final TextEditingController bodyController = TextEditingController();
+  
+  
+  // WYSIWYG Editor
+  late QuillController _quillController;
+  final FocusNode _editorFocusNode = FocusNode();
 
   final ImagePicker _picker = ImagePicker();
   final FirebaseStorage _storage = FirebaseStorage.instance;
   
   List<XFile> _attachedImages = [];
-  List<Map<String, String>> _uploadedAttachments = []; // Lưu thông tin file đã upload
+  List<Map<String, String>> _uploadedAttachments = [];
   final MessageService _messageService = MessageService();
   
   bool _hasUnsavedChanges = false;
   bool _isUploading = false;
   String? _currentDraftId;
+  
+  // UI State
+  bool _showCC = false;
+  bool _showBCC = false;
+  bool _isAdvancedMode = false;
 
   @override
   void initState() {
     super.initState();
+    _initializeQuillController();
     _loadCurrentUserName();
     _initializeFields();
     _setupChangeListeners();
+  }
+
+  void _initializeQuillController() {
+    _quillController = QuillController.basic();
+    if (widget.initialBody != null && widget.initialBody!.isNotEmpty) {
+      // Parse HTML content if needed
+      _quillController.document = Document()..insert(0, widget.initialBody!);
+    }
+    _quillController.addListener(_onContentChanged);
   }
 
   void _initializeFields() {
@@ -58,13 +80,13 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     
     toController.text = widget.initialTo ?? '';
     subjectController.text = widget.initialSubject ?? '';
-    bodyController.text = widget.initialBody ?? '';
   }
 
   void _setupChangeListeners() {
     toController.addListener(_onContentChanged);
+    ccController.addListener(_onContentChanged);
+    bccController.addListener(_onContentChanged);
     subjectController.addListener(_onContentChanged);
-    bodyController.addListener(_onContentChanged);
   }
 
   void _onContentChanged() {
@@ -99,7 +121,6 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     }
   }
 
-  // Upload tất cả attachments lên Firebase Storage
   Future<List<Map<String, String>>> _uploadAttachments() async {
     if (_attachedImages.isEmpty) return [];
 
@@ -117,18 +138,14 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
       for (int i = 0; i < _attachedImages.length; i++) {
         final file = _attachedImages[i];
         
-        // Tạo tên file unique
         final fileName = 'attachment_${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}_$i.${file.path.split('.').last}';
         final ref = _storage.ref().child('message_attachments/$fileName');
 
-        // Upload file
         final uploadTask = ref.putFile(File(file.path));
         final snapshot = await uploadTask;
         
-        // Lấy download URL
         final downloadUrl = await snapshot.ref.getDownloadURL();
         
-        // Lưu thông tin file
         uploadedFiles.add({
           'name': file.name,
           'url': downloadUrl,
@@ -153,38 +170,52 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     return uploadedFiles;
   }
 
+  String _getPlainTextFromQuill() {
+    return _quillController.document.toPlainText();
+  }
+
+  String _getHtmlFromQuill() {
+    // Convert Quill document to HTML
+    // Note: You might need to add html package dependency
+    return _quillController.document.toDelta().toString();
+  }
+
   Future<void> _saveDraft() async {
     final auth = FirebaseAuth.instance;
     final currentUser = auth.currentUser;
     if (currentUser == null) return;
 
     final toPhone = toController.text.trim();
+    final ccPhones = ccController.text.trim();
+    final bccPhones = bccController.text.trim();
     final subject = subjectController.text.trim();
-    final body = bodyController.text.trim();
+    final body = _getPlainTextFromQuill();
 
-    // Chỉ lưu draft nếu có nội dung
-    if (toPhone.isEmpty && subject.isEmpty && body.isEmpty && _attachedImages.isEmpty) {
+    if (toPhone.isEmpty && ccPhones.isEmpty && bccPhones.isEmpty && 
+        subject.isEmpty && body.isEmpty && _attachedImages.isEmpty) {
       return;
     }
 
     try {
-      // Upload attachments nếu có
       List<Map<String, String>> attachments = [];
       if (_attachedImages.isNotEmpty) {
         attachments = await _uploadAttachments();
         if (attachments.isNotEmpty) {
           _uploadedAttachments = attachments;
-          _attachedImages.clear(); // Clear local images after upload
+          _attachedImages.clear();
         }
       }
 
       final draftId = await _messageService.saveDraft(
         senderId: currentUser.uid,
         recipientPhone: toPhone,
+        ccPhones: ccPhones,
+        bccPhones: bccPhones,
         subject: subject,
         body: body,
+        htmlBody: _getHtmlFromQuill(),
         draftId: _currentDraftId,
-        attachments: _uploadedAttachments, // Thêm attachments vào draft
+        attachments: _uploadedAttachments,
       );
 
       if (_currentDraftId == null) {
@@ -211,6 +242,44 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     }
   }
 
+  List<String> _parseRecipients(String recipients) {
+    return recipients
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  Future<List<String>> _validateAndGetRecipientUids(List<String> phones) async {
+    final database = FirebaseDatabase.instance.ref();
+    final usersSnapshot = await database.child('users').get();
+    
+    List<String> validUids = [];
+    List<String> invalidPhones = [];
+    
+    for (String phone in phones) {
+      String? recipientUid;
+      for (var user in usersSnapshot.children) {
+        if (user.child('phone_number').value == phone) {
+          recipientUid = user.key;
+          break;
+        }
+      }
+      
+      if (recipientUid != null) {
+        validUids.add(recipientUid);
+      } else {
+        invalidPhones.add(phone);
+      }
+    }
+    
+    if (invalidPhones.isNotEmpty) {
+      throw Exception('Invalid phone numbers: ${invalidPhones.join(', ')}');
+    }
+    
+    return validUids;
+  }
+
   Future<void> _sendEmail() async {
     if (_isUploading) {
       CustomDialog.show(
@@ -226,58 +295,48 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     final auth = FirebaseAuth.instance;
 
     final fromEmail = fromController.text.trim();
-    final toPhone = toController.text.trim();
+    final toPhones = _parseRecipients(toController.text.trim());
+    final ccPhones = _parseRecipients(ccController.text.trim());
+    final bccPhones = _parseRecipients(bccController.text.trim());
     final subject = subjectController.text.trim();
-    final body = bodyController.text.trim();
+    final body = _getPlainTextFromQuill();
+    final htmlBody = _getHtmlFromQuill();
     final timestamp = DateTime.now().toIso8601String();
 
     final fromUid = auth.currentUser?.uid ?? 'anonymous';
 
-    print('=== DEBUG: Starting _sendEmail ===');
-    print('From: $fromEmail, To: $toPhone, Subject: $subject');
-    print('Sender UID: $fromUid');
-
-    // Tìm UID người nhận theo số điện thoại
-    final usersSnapshot = await database.child('users').get();
-    String? recipientUid;
-    for (var user in usersSnapshot.children) {
-      if (user.child('phone_number').value == toPhone) {
-        recipientUid = user.key;
-        break;
-      }
-    }
-
-    print('Recipient UID found: $recipientUid');
-
-    if (recipientUid == null) {
+    if (toPhones.isEmpty && ccPhones.isEmpty && bccPhones.isEmpty) {
       CustomDialog.show(
         context,
         title: "Error",
-        content: "Recipient does not exist!",
+        content: "Please add at least one recipient!",
         icon: Icons.error_outline,
       );
       return;
     }
 
     try {
-      // Upload attachments trước khi gửi
+      // Validate all recipients
+      final toUids = toPhones.isNotEmpty ? await _validateAndGetRecipientUids(toPhones) : <String>[];
+      final ccUids = ccPhones.isNotEmpty ? await _validateAndGetRecipientUids(ccPhones) : <String>[];
+      final bccUids = bccPhones.isNotEmpty ? await _validateAndGetRecipientUids(bccPhones) : <String>[];
+
+      // Upload attachments
       List<Map<String, String>> finalAttachments = List.from(_uploadedAttachments);
       if (_attachedImages.isNotEmpty) {
         final newAttachments = await _uploadAttachments();
         finalAttachments.addAll(newAttachments);
       }
 
-      // Gửi thư
+      // Create message
       final messageRef = database.child('internal_messages').push();
       final messageId = messageRef.key!;
 
-      print('Creating message with ID: $messageId');
-
-      // Tạo message data với attachments
       Map<String, dynamic> messageData = {
         'sender_id': fromUid,
         'subject': subject,
         'body': body,
+        'html_body': htmlBody,
         'sent_at': timestamp,
         'is_draft': false,
         'is_starred': false,
@@ -285,100 +344,72 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
         'is_trashed': false,
       };
 
-      // Thêm attachments nếu có
       if (finalAttachments.isNotEmpty) {
         messageData['attachments'] = finalAttachments;
       }
 
       await messageRef.set(messageData);
 
-      print('Message created successfully with ${finalAttachments.length} attachments');
+      // Save all recipients
+      final allRecipients = [
+        ...toUids.map((uid) => {'uid': uid, 'type': 'TO'}),
+        ...ccUids.map((uid) => {'uid': uid, 'type': 'CC'}),
+        ...bccUids.map((uid) => {'uid': uid, 'type': 'BCC'}),
+      ];
 
-      // Lưu người nhận
-      await database
-          .child('internal_message_recipients')
-          .child(messageId)
-          .child(recipientUid)
-          .set({
-        'recipient_type': 'TO',
-        'is_draft_recip': false,
-        'is_starred_recip': false,
-        'is_read_recip': false,
-        'is_trashed_recip': false,
-      });
+      for (var recipient in allRecipients) {
+        await database
+            .child('internal_message_recipients')
+            .child(messageId)
+            .child(recipient['uid']!)
+            .set({
+          'recipient_type': recipient['type'],
+          'is_draft_recip': false,
+          'is_starred_recip': false,
+          'is_read_recip': false,
+          'is_trashed_recip': false,
+        });
 
-      print('Recipient data saved successfully');
-
-      // Kiểm tra xem message đã được đọc chưa trước khi tạo notification
-      final recipientSnapshot = await database
-          .child('internal_message_recipients')
-          .child(messageId)
-          .child(recipientUid)
-          .get();
-
-      final isMessageRead = recipientSnapshot.child('is_read_recip').value as bool? ?? false;
-      print('Is message read: $isMessageRead');
-
-      // Chỉ tạo notification nếu message chưa được đọc
-      if (!isMessageRead) {
-        print('Creating notification for recipient: $recipientUid');
-        
-        final notificationRef = database.child('notifications').child(recipientUid).push();
-        final notificationData = {
+        // Create notification for each recipient
+        final notificationRef = database.child('notifications').child(recipient['uid']!).push();
+        await notificationRef.set({
           'title': 'You have a new message',
           'body': 'From: $fromEmail\nSubject: $subject${finalAttachments.isNotEmpty ? '\n📎 ${finalAttachments.length} attachment(s)' : ''}',
           'timestamp': DateTime.now().millisecondsSinceEpoch,
           'sender_id': fromUid,
           'message_id': messageId,
           'is_read': false,
-        };
-        
-        print('Notification data: $notificationData');
-        
-        await notificationRef.set(notificationData);
-        print('Notification created successfully with key: ${notificationRef.key}');
-        
-        // Thêm log để verify notification đã được lưu
-        final verifyNotification = await notificationRef.get();
-        print('Notification verification: ${verifyNotification.exists}');
-        if (verifyNotification.exists) {
-          print('Notification content: ${verifyNotification.value}');
-        }
-      } else {
-        print('Message already read, skipping notification creation');
+        });
       }
 
-      // Xóa draft nếu có
+      // Delete draft if exists
       if (_currentDraftId != null) {
         await _messageService.deleteDraft(_currentDraftId!);
-        print('Draft deleted: $_currentDraftId');
       }
 
-      // Xóa form sau khi gửi
+      // Clear form
       toController.clear();
+      ccController.clear();
+      bccController.clear();
       subjectController.clear();
-      bodyController.clear();
+      _quillController.clear();
       setState(() {
         _attachedImages.clear();
         _uploadedAttachments.clear();
         _hasUnsavedChanges = false;
+        _showCC = false;
+        _showBCC = false;
       });
-
-      print('Form cleared successfully');
 
       CustomDialog.show(
         context,
         title: "Success",
-        content: "Send mail successfully!",
+        content: "Email sent successfully!",
         icon: Icons.check_circle_outline,
       );
 
-      print('Success dialog shown');
-
-      // Quay lại trang trước
       Navigator.pop(context, true);
     } catch (e) {
-      print('ERROR in _sendEmail: $e');
       CustomDialog.show(
         context,
         title: "Error",
@@ -505,6 +536,70 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
     );
   }
 
+  Widget _buildQuillToolbar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: QuillToolbar.simple(
+        configurations: QuillSimpleToolbarConfigurations(
+          controller: _quillController,
+          sharedConfigurations: const QuillSharedConfigurations(
+            locale: Locale('en'),
+          ),
+          showDividers: false,
+          showFontFamily: false,
+          showFontSize: true,
+          showBoldButton: true,
+          showItalicButton: true,
+          showUnderLineButton: true,
+          showStrikeThrough: true,
+          showColorButton: true,
+          showBackgroundColorButton: true,
+          showListNumbers: true,
+          showListBullets: true,
+          showCodeBlock: true,
+          showQuote: true,
+          showIndent: true,
+          showLink: true,
+          showUndo: true,
+          showRedo: true,
+          showDirection: false,
+          multiRowsDisplay: false,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuillEditor({bool isReadOnly = false}) {
+  return Container(
+    height: 200,
+    decoration: BoxDecoration(
+      border: Border.all(color: Colors.white54),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: AbsorbPointer(
+      absorbing: isReadOnly, // Disable tương tác khi readOnly = true
+      child: QuillEditor.basic(
+        configurations: QuillEditorConfigurations(
+          controller: _quillController,
+          sharedConfigurations: const QuillSharedConfigurations(
+            locale: Locale('en'),
+          ),
+          placeholder: isReadOnly ? '' : 'Compose your message...',
+          expands: true,
+          padding: const EdgeInsets.all(16),
+          scrollable: true,
+          autoFocus: !isReadOnly,
+          showCursor: !isReadOnly,
+        ),
+      ),
+    ),
+  );
+}
+
   IconData _getFileIcon(String fileType) {
     switch (fileType.toLowerCase()) {
       case 'jpg':
@@ -559,7 +654,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
       } else if (result == 'discard') {
         return true;
       } else {
-        return false; // User cancelled
+        return false;
       }
     }
     return true;
@@ -568,13 +663,18 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
   @override
   void dispose() {
     toController.removeListener(_onContentChanged);
+    ccController.removeListener(_onContentChanged);
+    bccController.removeListener(_onContentChanged);
     subjectController.removeListener(_onContentChanged);
-    bodyController.removeListener(_onContentChanged);
+    _quillController.removeListener(_onContentChanged);
     
     toController.dispose();
+    ccController.dispose();
+    bccController.dispose();
     subjectController.dispose();
-    bodyController.dispose();
     fromController.dispose();
+    _quillController.dispose();
+    _editorFocusNode.dispose();
     super.dispose();
   }
 
@@ -592,6 +692,18 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
             fontSize: 24,
           ),
           actions: [
+            IconButton(
+              icon: Icon(
+                _isAdvancedMode ? Icons.edit_outlined : Icons.text_fields,
+                color: const Color(0xFFffcad4),
+              ),
+              onPressed: () {
+                setState(() {
+                  _isAdvancedMode = !_isAdvancedMode;
+                });
+              },
+              tooltip: _isAdvancedMode ? 'Simple Mode' : 'Advanced Mode',
+            ),
             if (_hasUnsavedChanges)
               IconButton(
                 icon: const Icon(Icons.save, color: Color(0xFFffcad4)),
@@ -605,6 +717,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
+              // From field
               TextField(
                 controller: fromController,
                 decoration: const InputDecoration(
@@ -617,17 +730,100 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                 style: const TextStyle(color: Colors.white),
                 readOnly: true,
               ),
-              TextField(
-                controller: toController,
-                decoration: const InputDecoration(
-                  labelText: 'To (Phone Number)',
-                  labelStyle: TextStyle(color: Colors.white),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white),
+              
+              // To field
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: toController,
+                      decoration: const InputDecoration(
+                        labelText: 'To (Phone Numbers, separated by comma)',
+                        labelStyle: TextStyle(color: Colors.white),
+                        focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white),
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
-                ),
-                style: const TextStyle(color: Colors.white),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.add_circle_outline, color: Color(0xFFffcad4)),
+                    onSelected: (value) {
+                      setState(() {
+                        if (value == 'CC') _showCC = true;
+                        if (value == 'BCC') _showBCC = true;
+                      });
+                    },
+                    itemBuilder: (context) => [
+                      if (!_showCC)
+                        const PopupMenuItem(value: 'CC', child: Text('Add CC')),
+                      if (!_showBCC)
+                        const PopupMenuItem(value: 'BCC', child: Text('Add BCC')),
+                    ],
+                  ),
+                ],
               ),
+              
+              // CC field
+              if (_showCC)
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: ccController,
+                        decoration: const InputDecoration(
+                          labelText: 'CC (Phone Numbers, separated by comma)',
+                          labelStyle: TextStyle(color: Colors.white),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white),
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.red),
+                      onPressed: () {
+                        setState(() {
+                          _showCC = false;
+                          ccController.clear();
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              
+              // BCC field
+              if (_showBCC)
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: bccController,
+                        decoration: const InputDecoration(
+                          labelText: 'BCC (Phone Numbers, separated by comma)',
+                          labelStyle: TextStyle(color: Colors.white),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white),
+                          ),
+                        ),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.red),
+                      onPressed: () {
+                        setState(() {
+                          _showBCC = false;
+                          bccController.clear();
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              
+              // Subject field
               TextField(
                 controller: subjectController,
                 decoration: const InputDecoration(
@@ -639,25 +835,40 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                 ),
                 style: const TextStyle(color: Colors.white),
               ),
+              
+              const SizedBox(height: 16),
+              
+              // Editor section
               Expanded(
                 child: Column(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: bodyController,
-                        decoration: const InputDecoration(
-                          labelText: 'Content',
-                          labelStyle: TextStyle(color: Colors.white),
-                          border: InputBorder.none,
+                    if (_isAdvancedMode) ...[
+                      _buildQuillToolbar(),
+                      const SizedBox(height: 8),
+                      Expanded(child: _buildQuillEditor()),
+                    ] else
+                      Expanded(
+                        child: TextField(
+                          controller: TextEditingController(text: _getPlainTextFromQuill()),
+                          onChanged: (text) {
+                            _quillController.document = Document()..insert(0, text);
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Content',
+                            labelStyle: TextStyle(color: Colors.white),
+                            border: InputBorder.none,
+                          ),
+                          style: const TextStyle(color: Colors.white),
+                          maxLines: null,
                         ),
-                        style: const TextStyle(color: Colors.white),
-                        maxLines: null,
                       ),
-                    ),
+                    const SizedBox(height: 16),
                     _buildAttachmentsSection(),
                   ],
                 ),
               ),
+              
+              // Action buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -672,7 +883,7 @@ class _ComposeEmailPageState extends State<ComposeEmailPage> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Icon(Icons.image, color: Color(0xFFF4538A)),
+                          : const Icon(Icons.attach_file, color: Color(0xFFF4538A)),
                       label: Text(
                         _isUploading ? 'Uploading...' : 'Add Files',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
