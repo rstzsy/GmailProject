@@ -372,6 +372,19 @@ class MessageService {
   Future<List<Map<String, dynamic>>> loadAllTrashedMessages(String currentUserId) async {
     final trashedSent = await loadTrashedSentMessages(currentUserId);
     final trashedInbox = await loadTrashedInboxMessages(currentUserId);
+//     String messageId = 'some_message_id';  // phải có giá trị này
+// final messageRef = FirebaseDatabase.instance
+//     .ref()
+//     .child('internal_messages')
+//     .child(messageId)
+//     .child('labels');
+
+// await messageRef.update({
+//   'hi': true,
+//   'work': false,
+// });
+
+
     
     final allTrashed = [...trashedSent, ...trashedInbox];
     
