@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_quill/quill_delta.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import '../services/message_service.dart';
@@ -56,6 +57,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
 
   bool isTrashDetail = false;
   late QuillController _quillController;
+  bool _isQuillInitialized = false;
 
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
   final MessageService _messageService = MessageService();
@@ -68,7 +70,6 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     _loadAttachments();
     _loadRecipients();
     _markMessageAsRead();
-    _initQuillController();
 
     // Kiểm tra route name để xác định có phải đang xem thư trong thùng rác không
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -84,17 +85,59 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   void _initializeQuillController() {
     _quillController = QuillController.basic();
     
-    // Nếu có htmlBody, sử dụng nó; nếu không thì dùng plain text
+    // Load content vào QuillController
     if (widget.htmlBody != null && widget.htmlBody!.isNotEmpty) {
       try {
-        // Parse HTML content to Quill document
-        // Note: Bạn có thể cần implement parser phù hợp
-        _quillController.document = Document()..insert(0, widget.body);
+        // Parse Delta JSON với cách tiếp cận cải thiện
+        dynamic deltaData;
+        
+        if (widget.htmlBody!.startsWith('[')) {
+          // Nếu htmlBody là array JSON
+          deltaData = jsonDecode(widget.htmlBody!);
+        } else if (widget.htmlBody!.startsWith('{')) {
+          // Nếu htmlBody là object JSON
+          final parsed = jsonDecode(widget.htmlBody!);
+          deltaData = parsed;
+        } else {
+          // Nếu là plain text
+          _quillController.document = Document()..insert(0, widget.htmlBody!);
+          _isQuillInitialized = true;
+          return;
+        }
+
+        // Tạo Delta object
+        Delta delta;
+        if (deltaData is List) {
+          delta = Delta.fromJson(deltaData);
+        } else if (deltaData is Map && deltaData.containsKey('ops')) {
+          delta = Delta.fromJson(deltaData['ops']);
+        } else {
+          // Fallback
+          delta = Delta()..insert(widget.htmlBody!);
+        }
+
+        // Debug: In ra delta để kiểm tra
+        print('Delta data: $deltaData');
+        print('Created delta: ${delta.toJson()}');
+
+        _quillController.document = Document.fromDelta(delta);
+        _isQuillInitialized = true;
+        
       } catch (e) {
-        _quillController.document = Document()..insert(0, widget.body);
+        print('Error parsing Quill Delta: $e');
+        print('HTML Body content: ${widget.htmlBody}');
+        
+        // Fallback to plain text
+        _quillController.document = Document()..insert(0, widget.body.isNotEmpty ? widget.body : widget.htmlBody!);
+        _isQuillInitialized = true;
       }
-    } else {
+    } else if (widget.body.isNotEmpty) {
       _quillController.document = Document()..insert(0, widget.body);
+      _isQuillInitialized = true;
+    }
+    
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -564,35 +607,91 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     );
   }
 
-  void _initQuillController() {
-  if (widget.htmlBody != null && widget.htmlBody!.isNotEmpty) {
-    try {
-      // Parse Delta JSON from database
-      final deltaJson = jsonDecode(widget.htmlBody!);
-      print('Parsed Delta JSON: $deltaJson'); // Debug log
-      final document = Document.fromJson(deltaJson);
-      _quillController = QuillController(
-        document: document,
-        selection: const TextSelection.collapsed(offset: 0),
-      );
-    } catch (e) {
-      print('Error parsing Quill Delta: $e');
-      // Fallback to plain text with basic document
-      _quillController = QuillController(
-        document: Document()..insert(0, widget.body),
-        selection: const TextSelection.collapsed(offset: 0),
-      );
-    }
-  } else {
-    // Use plain text if no HTML body
-    _quillController = QuillController(
-      document: Document()..insert(0, widget.body),
-      selection: const TextSelection.collapsed(offset: 0),
+  Widget _buildFormattedView() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: QuillEditor.basic(
+        configurations: QuillEditorConfigurations(
+          controller: _quillController,
+          sharedConfigurations: const QuillSharedConfigurations(
+            locale: Locale('en'),
+          ),
+          //readOnly: true, // Đảm bảo readOnly = true
+          showCursor: false,
+          enableInteractiveSelection: true,
+          expands: false,
+          autoFocus: false,
+          padding: EdgeInsets.zero,
+          customStyles: DefaultStyles(
+            paragraph: DefaultTextBlockStyle(
+              const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                height: 1.6,
+              ),
+              const VerticalSpacing(6, 0),
+              const VerticalSpacing(0, 0),
+              null,
+            ),
+            bold: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+            italic: const TextStyle(
+              fontStyle: FontStyle.italic,
+              color: Colors.white,
+            ),
+            underline: const TextStyle(
+              decoration: TextDecoration.underline,
+              color: Colors.white,
+            ),
+            strikeThrough: const TextStyle(
+              decoration: TextDecoration.lineThrough,
+              color: Colors.white,
+            ),
+            h1: DefaultTextBlockStyle(
+              const TextStyle(
+                fontSize: 32,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+              const VerticalSpacing(16, 0),
+              const VerticalSpacing(0, 0),
+              null,
+            ),
+            h2: DefaultTextBlockStyle(
+              const TextStyle(
+                fontSize: 24,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+              const VerticalSpacing(8, 0),
+              const VerticalSpacing(0, 0),
+              null,
+            ),
+            h3: DefaultTextBlockStyle(
+              const TextStyle(
+                fontSize: 20,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+              const VerticalSpacing(8, 0),
+              const VerticalSpacing(0, 0),
+              null,
+            ),
+          ),
+        ),
+      ),
     );
   }
-}
 
-  // Widget để hiển thị nội dung với WYSIWYG
+  // Widget để hiển thị nội dung với WYSIWYG đã cải thiện
   Widget _buildContentSection() {
     if (!showContent) return const SizedBox.shrink();
 
@@ -625,36 +724,25 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         const SizedBox(height: 8),
         
         // Nội dung email
-        if (showAdvancedView && widget.htmlBody != null && widget.htmlBody!.isNotEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white24),
-            ),
-            child: AbsorbPointer(
-              child: QuillEditor.basic(
-                configurations: QuillEditorConfigurations(
-                  controller: _quillController,
-                  sharedConfigurations: const QuillSharedConfigurations(
-                    locale: Locale('en'),
-                  ),
-                  // XÓA HẾT các tham số không hợp lệ
-                ),
-              ),
-            ),
-          )
+        if (showAdvancedView && _isQuillInitialized)
+          // Formatted View - hiển thị với formatting
+          _buildFormattedView()
         else
+          // Simple View - hiển thị plain text
           Text(
-            widget.body,
-            style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
+            _isQuillInitialized 
+              ? _quillController.document.toPlainText() 
+              : widget.body,
+            style: const TextStyle(
+              color: Colors.white, 
+              fontSize: 15, 
+              height: 1.6,
+              fontWeight: FontWeight.bold,
+            ),
           ),
       ],
     );
   }
-
 
   Future<void> _handleDelete() async {
     final confirm = await showDialog<bool>(
@@ -908,29 +996,6 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                   ),
                   onPressed: _navigateToReply,
                   icon: const Icon(Icons.reply, color: Color(0xFFF4538A), size: 20),
-                  label: const Text(
-                    "Reply",
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Color(0xFFF4538A),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Forward Button
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE8F5E8),
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: _navigateToForward,
-                  icon: const Icon(Icons.forward, color: Color(0xFF4CAF50), size: 20),
                   label: const Text(
                     "Forward",
                     style: TextStyle(
