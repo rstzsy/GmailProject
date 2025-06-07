@@ -7,6 +7,7 @@ import '../services/message_service.dart';
 import 'replyEmail_page.dart'; 
 import 'forwardEmail_page.dart';
 import 'dart:convert';
+import '../services/label_service.dart';
 
 class EmailDetailPage extends StatefulWidget {
   final String subject;
@@ -53,6 +54,14 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   List<Map<String, dynamic>> toRecipients = [];
   List<Map<String, dynamic>> ccRecipients = [];
   List<Map<String, dynamic>> bccRecipients = [];
+  
+  List<Map<String, dynamic>> _allLabels = [];
+  List<String> _assignedLabelIds = [];
+  List<Map<String, dynamic>> get assignedLabels {
+    return _allLabels
+        .where((label) => _assignedLabelIds.contains(label['id']))
+        .toList();
+  }
 
   bool isTrashDetail = false;
   late QuillController _quillController;
@@ -69,6 +78,8 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     _loadRecipients();
     _markMessageAsRead();
     _initQuillController();
+    _loadLabels();
+
 
     // Kiểm tra route name để xác định có phải đang xem thư trong thùng rác không
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -344,6 +355,170 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
           SnackBar(content: Text('Error opening $fileName: $e')),
         );
       }
+    }
+  }
+
+
+  Future<void> _showLabelSelectionDialog(
+    BuildContext context,
+    String mailId,
+  ) async {
+    try {
+      final labels = await LabelService().getLabels();
+      print('Labels fetched for dialog: $labels');
+
+      if (labels.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Không có nhãn nào để hiển thị.')),
+          );
+        }
+        return;
+      }
+
+      await showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text(
+              'Chọn nhãn để gán',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: labels.length,
+                itemBuilder: (context, index) {
+                  final label = labels[index];
+                  return SimpleDialogOption(
+                    onPressed: () async {
+                      Navigator.pop(context); // đóng dialog
+                      final success = await _assignLabelToMail(
+                        mailId,
+                        label['id'],
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? ' Đã gán nhãn "${label['name']}"'
+                                  : ' Gán nhãn "${label['name']}" thất bại',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.label,
+                        color: Color(0xFFffcad4),
+                      ),
+                      title: Text(
+                        label['name'],
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'ID: ${label['id']}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Đóng',
+                  style: TextStyle(color: Color(0xFFffcad4)),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      print(' Error in _showLabelSelectionDialog: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lỗi khi hiển thị danh sách nhãn.')),
+        );
+      }
+    }
+  }
+
+  Future<bool> _assignLabelToMail(String mailId, String labelId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      print(' Người dùng chưa đăng nhập');
+      return false;
+    }
+
+    try {
+      final mailLabelRef = FirebaseDatabase.instance
+          .ref()
+          .child('users') // đảm bảo đúng đường dẫn 'users', không phải 'user'
+          .child(uid)
+          .child('mails')
+          .child(mailId)
+          .child('labels')
+          .child(labelId);
+
+      await mailLabelRef.set(true);
+
+      print('Đã gán mail $mailId vào label $labelId');
+      return true;
+    } catch (e) {
+      print(' Gán thất bại: $e');
+      return false;
+    }
+  }
+
+  Future<void> _loadLabels() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || widget.messageId == null) return;
+
+      // Lấy danh sách label của người dùng
+      final labelsSnapshot =
+          await _db.child('users').child(uid).child('labels').get();
+      if (labelsSnapshot.exists) {
+        final labelData = labelsSnapshot.value as Map;
+        _allLabels =
+            labelData.entries.map((e) {
+              final value = Map<String, dynamic>.from(e.value);
+              value['id'] = e.key;
+              return value;
+            }).toList();
+      }
+
+      // Lấy danh sách ID label gắn với thư
+      final messageLabelSnap =
+          await _db
+              .child('users')
+              .child(uid)
+              .child('mails')
+              .child(widget.messageId!)
+              .child('labels')
+              .get();
+
+      if (messageLabelSnap.exists) {
+        final data = messageLabelSnap.value as Map;
+        _assignedLabelIds = data.keys.map((e) => e.toString()).toList();
+      }
+
+      if (mounted) setState(() {});
+    } catch (e) {
+      print('Error loading labels: $e');
     }
   }
 
@@ -806,6 +981,44 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
             icon: const Icon(Icons.mail_outline, color: Colors.white),
             onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
           ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            offset: const Offset(0, 40),
+            onSelected: (String value) async {
+              if (widget.messageId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không thể gán nhãn: Thiếu ID tin nhắn.'),
+                    ),
+                  );
+                }
+                return;
+              }
+
+              if (value == 'label') {
+                print('Label clicked, calling _showLabelSelectionDialog');
+
+                await _showLabelSelectionDialog(context, widget.messageId!);
+              }
+            },
+            itemBuilder:
+                (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'label',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.label_outline,
+                          color: Color.fromARGB(255, 245, 67, 126),
+                        ), // Thêm icon nhãn
+                        SizedBox(width: 8),
+                        Text('Label'),
+                      ],
+                    ),
+                  ),
+                ],
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -813,13 +1026,40 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.subject,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
+           Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Text(
+                  widget.subject,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                ...assignedLabels.map(
+                (label) => Material(
+                  color: Colors.pinkAccent.shade100,
+                  borderRadius: BorderRadius.circular(100), // 👈 Hình bầu dục
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.pinkAccent.shade100,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      label['name'],
+                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                    ),
+                  ),
+                ),
               ),
+              ],
             ),
             const SizedBox(height: 24),
             GestureDetector(
