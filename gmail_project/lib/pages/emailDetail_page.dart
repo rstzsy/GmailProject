@@ -5,9 +5,10 @@ import 'package:flutter_quill/quill_delta.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import '../services/message_service.dart';
-import 'replyEmail_page.dart'; 
+import 'replyEmail_page.dart';
 import 'forwardEmail_page.dart';
 import 'dart:convert';
+import '../services/label_service.dart';
 
 class EmailDetailPage extends StatefulWidget {
   final String subject;
@@ -45,15 +46,23 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   bool isLoadingAttachments = true;
   bool isLoadingRecipients = true;
   bool showAdvancedView = false;
-  
+
   String displaySenderName = '';
   String displaySenderTitle = '';
   String displayReceiverName = '';
-  
+
   List<Map<String, String>> attachments = [];
   List<Map<String, dynamic>> toRecipients = [];
   List<Map<String, dynamic>> ccRecipients = [];
   List<Map<String, dynamic>> bccRecipients = [];
+
+  List<Map<String, dynamic>> _allLabels = [];
+  List<String> _assignedLabelIds = [];
+  List<Map<String, dynamic>> get assignedLabels {
+    return _allLabels
+        .where((label) => _assignedLabelIds.contains(label['id']))
+        .toList();
+  }
 
   bool isTrashDetail = false;
   late QuillController _quillController;
@@ -70,6 +79,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     _loadAttachments();
     _loadRecipients();
     _markMessageAsRead();
+    _loadLabels();
 
     // Kiểm tra route name để xác định có phải đang xem thư trong thùng rác không
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -84,13 +94,13 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
 
   void _initializeQuillController() {
     _quillController = QuillController.basic();
-    
+
     // Load content vào QuillController
     if (widget.htmlBody != null && widget.htmlBody!.isNotEmpty) {
       try {
         // Parse Delta JSON với cách tiếp cận cải thiện
         dynamic deltaData;
-        
+
         if (widget.htmlBody!.startsWith('[')) {
           // Nếu htmlBody là array JSON
           deltaData = jsonDecode(widget.htmlBody!);
@@ -122,20 +132,23 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
 
         _quillController.document = Document.fromDelta(delta);
         _isQuillInitialized = true;
-        
       } catch (e) {
         print('Error parsing Quill Delta: $e');
         print('HTML Body content: ${widget.htmlBody}');
-        
+
         // Fallback to plain text
-        _quillController.document = Document()..insert(0, widget.body.isNotEmpty ? widget.body : widget.htmlBody!);
+        _quillController.document =
+            Document()..insert(
+              0,
+              widget.body.isNotEmpty ? widget.body : widget.htmlBody!,
+            );
         _isQuillInitialized = true;
       }
     } else if (widget.body.isNotEmpty) {
       _quillController.document = Document()..insert(0, widget.body);
       _isQuillInitialized = true;
     }
-    
+
     if (mounted) {
       setState(() {});
     }
@@ -151,14 +164,16 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         return;
       }
 
-      final recipientsSnapshot = await _db
-          .child('internal_message_recipients')
-          .child(widget.messageId!)
-          .get();
+      final recipientsSnapshot =
+          await _db
+              .child('internal_message_recipients')
+              .child(widget.messageId!)
+              .get();
 
       if (recipientsSnapshot.exists) {
-        final recipientsData = recipientsSnapshot.value as Map<dynamic, dynamic>;
-        
+        final recipientsData =
+            recipientsSnapshot.value as Map<dynamic, dynamic>;
+
         List<Map<String, dynamic>> tempToRecipients = [];
         List<Map<String, dynamic>> tempCcRecipients = [];
         List<Map<String, dynamic>> tempBccRecipients = [];
@@ -172,10 +187,11 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
           final userSnapshot = await _db.child('users/$userId').get();
           String userName = 'Unknown User';
           String userEmail = '';
-          
+
           if (userSnapshot.exists) {
             final userData = userSnapshot.value as Map<dynamic, dynamic>;
-            userName = userData['username'] ?? userData['name'] ?? 'Unknown User';
+            userName =
+                userData['username'] ?? userData['name'] ?? 'Unknown User';
             userEmail = userData['email'] ?? userData['phone_number'] ?? '';
           }
 
@@ -227,19 +243,18 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         return;
       }
 
-      final messageSnapshot = await _db
-          .child('internal_messages')
-          .child(widget.messageId!)
-          .get();
+      final messageSnapshot =
+          await _db.child('internal_messages').child(widget.messageId!).get();
 
       if (messageSnapshot.exists) {
         final messageData = messageSnapshot.value as Map<dynamic, dynamic>;
         if (messageData.containsKey('attachments')) {
           final attachmentsData = messageData['attachments'];
           if (attachmentsData is List) {
-            attachments = attachmentsData
-                .map((item) => Map<String, String>.from(item as Map))
-                .toList();
+            attachments =
+                attachmentsData
+                    .map((item) => Map<String, String>.from(item as Map))
+                    .toList();
           }
         }
       }
@@ -268,7 +283,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         return;
       }
 
-      print('Marking message as read - MessageID: ${widget.messageId}, UserID: $currentUserId');
+      print(
+        'Marking message as read - MessageID: ${widget.messageId}, UserID: $currentUserId',
+      );
 
       // Cập nhật is_read_recip trong internal_message_recipients
       await _db
@@ -279,25 +296,26 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
 
       // Kiểm tra xem user hiện tại có phải là sender không
       final isSender = currentUserId == widget.senderId;
-      
+
       // Nếu là sender, cập nhật is_read trong internal_messages
       if (isSender) {
-        await _db
-            .child('internal_messages')
-            .child(widget.messageId!)
-            .update({'is_read': true});
+        await _db.child('internal_messages').child(widget.messageId!).update({
+          'is_read': true,
+        });
       }
 
       // Cập nhật tất cả notifications liên quan đến message này thành đã đọc
-      final notificationsSnapshot = await _db
-          .child('notifications')
-          .child(currentUserId)
-          .orderByChild('message_id')
-          .equalTo(widget.messageId!)
-          .get();
+      final notificationsSnapshot =
+          await _db
+              .child('notifications')
+              .child(currentUserId)
+              .orderByChild('message_id')
+              .equalTo(widget.messageId!)
+              .get();
 
       if (notificationsSnapshot.exists) {
-        final notifications = notificationsSnapshot.value as Map<dynamic, dynamic>;
+        final notifications =
+            notificationsSnapshot.value as Map<dynamic, dynamic>;
         for (var notificationKey in notifications.keys) {
           await _db
               .child('notifications')
@@ -317,19 +335,25 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   Future<void> _loadUserInfo() async {
     try {
       if (widget.senderId != null && widget.senderId!.isNotEmpty) {
-        final senderSnapshot = await _db.child('users/${widget.senderId}').get();
+        final senderSnapshot =
+            await _db.child('users/${widget.senderId}').get();
         if (senderSnapshot.exists) {
           final senderData = senderSnapshot.value as Map<dynamic, dynamic>;
-          displaySenderName = senderData['username'] ?? senderData['name'] ?? 'Unknown User';
+          displaySenderName =
+              senderData['username'] ?? senderData['name'] ?? 'Unknown User';
           displaySenderTitle = senderData['email'] ?? senderData['title'] ?? '';
         }
       }
 
       if (widget.receiverId != null && widget.receiverId!.isNotEmpty) {
-        final receiverSnapshot = await _db.child('users/${widget.receiverId}').get();
+        final receiverSnapshot =
+            await _db.child('users/${widget.receiverId}').get();
         if (receiverSnapshot.exists) {
           final receiverData = receiverSnapshot.value as Map<dynamic, dynamic>;
-          displayReceiverName = receiverData['username'] ?? receiverData['name'] ?? 'Unknown Receiver';
+          displayReceiverName =
+              receiverData['username'] ??
+              receiverData['name'] ??
+              'Unknown Receiver';
         } else {
           displayReceiverName = 'Unknown Receiver';
         }
@@ -338,13 +362,15 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       }
 
       if (displaySenderName.isEmpty) {
-        displaySenderName = widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
+        displaySenderName =
+            widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
       }
       if (displaySenderTitle.isEmpty) {
         displaySenderTitle = widget.senderTitle;
       }
     } catch (e) {
-      displaySenderName = widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
+      displaySenderName =
+          widget.senderName.isNotEmpty ? widget.senderName : 'Unknown User';
       displaySenderTitle = widget.senderTitle;
       displayReceiverName = 'Error Loading Receiver';
     } finally {
@@ -376,17 +402,180 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Cannot open $fileName')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Cannot open $fileName')));
         }
       }
     } catch (e) {
       if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error opening $fileName: $e')));
+      }
+    }
+  }
+
+  Future<void> _showLabelSelectionDialog(
+    BuildContext context,
+    String mailId,
+  ) async {
+    try {
+      final labels = await LabelService().getLabels();
+      print('Labels fetched for dialog: $labels');
+
+      if (labels.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Không có nhãn nào để hiển thị.')),
+          );
+        }
+        return;
+      }
+
+      await showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text(
+              'Chọn nhãn để gán',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: labels.length,
+                itemBuilder: (context, index) {
+                  final label = labels[index];
+                  return SimpleDialogOption(
+                    onPressed: () async {
+                      Navigator.pop(context); // đóng dialog
+                      final success = await _assignLabelToMail(
+                        mailId,
+                        label['id'],
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? ' Đã gán nhãn "${label['name']}"'
+                                  : ' Gán nhãn "${label['name']}" thất bại',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.label,
+                        color: Color(0xFFffcad4),
+                      ),
+                      title: Text(
+                        label['name'],
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'ID: ${label['id']}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Đóng',
+                  style: TextStyle(color: Color(0xFFffcad4)),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      print(' Error in _showLabelSelectionDialog: $e');
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error opening $fileName: $e')),
+          const SnackBar(content: Text('Lỗi khi hiển thị danh sách nhãn.')),
         );
       }
+    }
+  }
+
+  Future<bool> _assignLabelToMail(String mailId, String labelId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      print(' Người dùng chưa đăng nhập');
+      return false;
+    }
+
+    try {
+      final mailLabelRef = FirebaseDatabase.instance
+          .ref()
+          .child('users') // đảm bảo đúng đường dẫn 'users', không phải 'user'
+          .child(uid)
+          .child('mails')
+          .child(mailId)
+          .child('labels')
+          .child(labelId);
+
+      await mailLabelRef.set(true);
+
+      print('Đã gán mail $mailId vào label $labelId');
+      return true;
+    } catch (e) {
+      print(' Gán thất bại: $e');
+      return false;
+    }
+  }
+
+  Future<void> _loadLabels() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || widget.messageId == null) return;
+
+      // Lấy danh sách label của người dùng
+      final labelsSnapshot =
+          await _db.child('users').child(uid).child('labels').get();
+      if (labelsSnapshot.exists) {
+        final labelData = labelsSnapshot.value as Map;
+        _allLabels =
+            labelData.entries.map((e) {
+              final value = Map<String, dynamic>.from(e.value);
+              value['id'] = e.key;
+              return value;
+            }).toList();
+      }
+
+      // Lấy danh sách ID label gắn với thư
+      final messageLabelSnap =
+          await _db
+              .child('users')
+              .child(uid)
+              .child('mails')
+              .child(widget.messageId!)
+              .child('labels')
+              .get();
+
+      if (messageLabelSnap.exists) {
+        final data = messageLabelSnap.value as Map;
+        _assignedLabelIds = data.keys.map((e) => e.toString()).toList();
+      }
+
+      if (mounted) setState(() {});
+    } catch (e) {
+      print('Error loading labels: $e');
     }
   }
 
@@ -451,19 +640,24 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         // TO Recipients
         if (toRecipients.isNotEmpty)
           _buildRecipientGroup('To', toRecipients, Icons.person),
-        
+
         // CC Recipients
         if (ccRecipients.isNotEmpty)
           _buildRecipientGroup('CC', ccRecipients, Icons.content_copy),
-        
+
         // BCC Recipients (chỉ hiển thị nếu user hiện tại là sender)
-        if (bccRecipients.isNotEmpty && widget.senderId == FirebaseAuth.instance.currentUser?.uid)
+        if (bccRecipients.isNotEmpty &&
+            widget.senderId == FirebaseAuth.instance.currentUser?.uid)
           _buildRecipientGroup('BCC', bccRecipients, Icons.visibility_off),
       ],
     );
   }
 
-  Widget _buildRecipientGroup(String label, List<Map<String, dynamic>> recipients, IconData icon) {
+  Widget _buildRecipientGroup(
+    String label,
+    List<Map<String, dynamic>> recipients,
+    IconData icon,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -483,21 +677,29 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
             child: Wrap(
               spacing: 8,
               runSpacing: 4,
-              children: recipients.map((recipient) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2C2C2C),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Text(
-                  recipient['name'],
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                  ),
-                ),
-              )).toList(),
+              children:
+                  recipients
+                      .map(
+                        (recipient) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2C2C2C),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: Text(
+                            recipient['name'],
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
             ),
           ),
         ],
@@ -588,19 +790,12 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                   const SizedBox(height: 2),
                   Text(
                     _formatFileSize(fileSize),
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontSize: 12,
-                    ),
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.download,
-              color: Colors.white54,
-              size: 20,
-            ),
+            const Icon(Icons.download, color: Colors.white54, size: 20),
           ],
         ),
       ),
@@ -630,11 +825,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
           padding: EdgeInsets.zero,
           customStyles: DefaultStyles(
             paragraph: DefaultTextBlockStyle(
-              const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                height: 1.6,
-              ),
+              const TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
               const VerticalSpacing(6, 0),
               const VerticalSpacing(0, 0),
               null,
@@ -699,7 +890,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 24),
-        
+
         // Toggle để chuyển đổi giữa HTML và Plain text
         Row(
           children: [
@@ -712,17 +903,14 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
               ),
               label: Text(
                 showAdvancedView ? 'Simple View' : 'Formatted View',
-                style: const TextStyle(
-                  color: Color(0xFFffcad4),
-                  fontSize: 14,
-                ),
+                style: const TextStyle(color: Color(0xFFffcad4), fontSize: 14),
               ),
             ),
           ],
         ),
-        
+
         const SizedBox(height: 8),
-        
+
         // Nội dung email
         if (showAdvancedView && _isQuillInitialized)
           // Formatted View - hiển thị với formatting
@@ -730,12 +918,12 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         else
           // Simple View - hiển thị plain text
           Text(
-            _isQuillInitialized 
-              ? _quillController.document.toPlainText() 
-              : widget.body,
+            _isQuillInitialized
+                ? _quillController.document.toPlainText()
+                : widget.body,
             style: const TextStyle(
-              color: Colors.white, 
-              fontSize: 15, 
+              color: Colors.white,
+              fontSize: 15,
               height: 1.6,
               fontWeight: FontWeight.bold,
             ),
@@ -747,40 +935,49 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   Future<void> _handleDelete() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
-        title: const Text("Xác nhận xoá", style: TextStyle(color: Colors.white)),
-        content: const Text(
-          "Bạn có chắc muốn chuyển thư này vào thùng rác không?",
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Hủy", style: TextStyle(color: Colors.grey)),
+      builder:
+          (_) => AlertDialog(
+            backgroundColor: const Color(0xFF2C2C2C),
+            title: const Text(
+              "Xác nhận xoá",
+              style: TextStyle(color: Colors.white),
+            ),
+            content: const Text(
+              "Bạn có chắc muốn chuyển thư này vào thùng rác không?",
+              style: TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Hủy", style: TextStyle(color: Colors.grey)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  "Đồng ý",
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Đồng ý", style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
     );
 
     if (confirm == true) {
       try {
         if (widget.messageId != null) {
           final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-          
+
           if (currentUserId == null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Không thể xác định người dùng hiện tại')),
+              const SnackBar(
+                content: Text('Không thể xác định người dùng hiện tại'),
+              ),
             );
             return;
           }
 
           final isSender = currentUserId == widget.senderId;
-          
+
           await _messageService.moveMessageToTrash(
             widget.messageId!,
             currentUserId,
@@ -796,9 +993,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         }
       } catch (e) {
         print('Error deleting message: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi xoá thư: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi khi xoá thư: $e')));
       }
     }
   }
@@ -806,7 +1003,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   void _navigateToReply() async {
     if (widget.messageId == null || widget.senderId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể reply: thiếu thông tin tin nhắn')),
+        const SnackBar(
+          content: Text('Không thể reply: thiếu thông tin tin nhắn'),
+        ),
       );
       return;
     }
@@ -814,7 +1013,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId == widget.senderId) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể reply cho tin nhắn của chính bạn')),
+        const SnackBar(
+          content: Text('Không thể reply cho tin nhắn của chính bạn'),
+        ),
       );
       return;
     }
@@ -823,14 +1024,18 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ReplyEmailPage(
-            originalMessageId: widget.messageId!,
-            originalSubject: widget.subject,
-            originalBody: widget.body,
-            originalSenderName: displaySenderName.isNotEmpty ? displaySenderName : widget.senderName,
-            originalSenderId: widget.senderId!,
-            originalSentAt: widget.sentAt,
-          ),
+          builder:
+              (context) => ReplyEmailPage(
+                originalMessageId: widget.messageId!,
+                originalSubject: widget.subject,
+                originalBody: widget.body,
+                originalSenderName:
+                    displaySenderName.isNotEmpty
+                        ? displaySenderName
+                        : widget.senderName,
+                originalSenderId: widget.senderId!,
+                originalSentAt: widget.sentAt,
+              ),
         ),
       );
 
@@ -841,9 +1046,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       }
     } catch (e) {
       print('Error navigating to reply page: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi mở trang reply: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi khi mở trang reply: $e')));
     }
   }
 
@@ -872,10 +1077,7 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
               const SizedBox(width: 4),
               Text(
                 '${attachments.length}',
-                style: const TextStyle(
-                  color: Color(0xFFffcad4),
-                  fontSize: 16,
-                ),
+                style: const TextStyle(color: Color(0xFFffcad4), fontSize: 16),
               ),
             ],
             if (ccRecipients.isNotEmpty || bccRecipients.isNotEmpty) ...[
@@ -892,7 +1094,8 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
             ),
           IconButton(
             icon: const Icon(Icons.mail_outline, color: Colors.white),
-            onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
+            onPressed:
+                () => Navigator.popUntil(context, (route) => route.isFirst),
           ),
         ],
       ),
@@ -901,13 +1104,43 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              widget.subject,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Text(
+                  widget.subject,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                ...assignedLabels.map(
+                  (label) => Material(
+                    color: Colors.pinkAccent.shade100,
+                    borderRadius: BorderRadius.circular(100), // 👈 Hình bầu dục
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.pinkAccent.shade100,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        label['name'],
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             GestureDetector(
@@ -928,28 +1161,35 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Expanded(
-                              child: isLoadingUserInfo
-                                  ? const SizedBox(
-                                      height: 16,
-                                      width: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.grey),
+                              child:
+                                  isLoadingUserInfo
+                                      ? const SizedBox(
+                                        height: 16,
+                                        width: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.grey,
+                                              ),
+                                        ),
+                                      )
+                                      : Text(
+                                        displaySenderName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                    )
-                                  : Text(
-                                      displaySenderName,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
                             ),
                             if (widget.sentAt != null)
                               Text(
                                 _formatDate(widget.sentAt!),
-                                style: const TextStyle(color: Colors.grey, fontSize: 13),
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 13,
+                                ),
                               ),
                           ],
                         ),
@@ -961,7 +1201,10 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
                               displaySenderTitle,
-                              style: const TextStyle(color: Colors.grey, fontSize: 13),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                       ],
@@ -970,10 +1213,10 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                 ],
               ),
             ),
-            
+
             // Nội dung email
             _buildContentSection(),
-            
+
             // Hiển thị attachments
             _buildAttachmentsSection(),
           ],
@@ -995,7 +1238,11 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                     ),
                   ),
                   onPressed: _navigateToReply,
-                  icon: const Icon(Icons.reply, color: Color(0xFFF4538A), size: 20),
+                  icon: const Icon(
+                    Icons.reply,
+                    color: Color(0xFFF4538A),
+                    size: 20,
+                  ),
                   label: const Text(
                     "Forward",
                     style: TextStyle(
@@ -1024,8 +1271,19 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
 
   String _getMonthName(int month) {
     const months = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return months[month];
   }
@@ -1033,7 +1291,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
   Future<void> _navigateToForward() async {
     if (widget.messageId == null || widget.senderId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể forward: thiếu thông tin tin nhắn')),
+        const SnackBar(
+          content: Text('Không thể forward: thiếu thông tin tin nhắn'),
+        ),
       );
       return;
     }
@@ -1042,14 +1302,18 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ForwardEmailPage(
-            originalMessageId: widget.messageId!,
-            originalSubject: widget.subject,
-            originalBody: widget.body,
-            originalSenderName: displaySenderName.isNotEmpty ? displaySenderName : widget.senderName,
-            originalSenderId: widget.senderId!,
-            originalSentAt: widget.sentAt,
-          ),
+          builder:
+              (context) => ForwardEmailPage(
+                originalMessageId: widget.messageId!,
+                originalSubject: widget.subject,
+                originalBody: widget.body,
+                originalSenderName:
+                    displaySenderName.isNotEmpty
+                        ? displaySenderName
+                        : widget.senderName,
+                originalSenderId: widget.senderId!,
+                originalSentAt: widget.sentAt,
+              ),
         ),
       );
 
@@ -1061,9 +1325,9 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
       }
     } catch (e) {
       print('Error navigating to forward page: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi khi mở trang forward: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi khi mở trang forward: $e')));
     }
   }
 
