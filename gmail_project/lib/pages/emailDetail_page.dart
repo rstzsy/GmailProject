@@ -1238,11 +1238,30 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
                     ),
                   ),
                   onPressed: _navigateToReply,
-                  icon: const Icon(
-                    Icons.reply,
-                    color: Color(0xFFF4538A),
-                    size: 20,
+                  icon: const Icon(Icons.reply, color: Color(0xFFF4538A), size: 20),
+                  label: const Text(
+                    "Reply",
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Color(0xFFF4538A),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Forward Button
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE8F5E8),
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _navigateToForward,
+                  icon: const Icon(Icons.forward, color: Color(0xFF4CAF50), size: 20),
                   label: const Text(
                     "Forward",
                     style: TextStyle(
