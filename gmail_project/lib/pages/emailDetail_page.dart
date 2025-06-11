@@ -1097,6 +1097,44 @@ class _EmailDetailPageState extends State<EmailDetailPage> {
             onPressed:
                 () => Navigator.popUntil(context, (route) => route.isFirst),
           ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            offset: const Offset(0, 40),
+            onSelected: (String value) async {
+              if (widget.messageId == null) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không thể gán nhãn: Thiếu ID tin nhắn.'),
+                    ),
+                  );
+                }
+                return;
+              }
+
+              if (value == 'label') {
+                print('Label clicked, calling _showLabelSelectionDialog');
+
+                await _showLabelSelectionDialog(context, widget.messageId!);
+              }
+            },
+            itemBuilder:
+                (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'label',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.label_outline,
+                          color: Color.fromARGB(255, 245, 67, 126),
+                        ), // Thêm icon nhãn
+                        SizedBox(width: 8),
+                        Text('Label'),
+                      ],
+                    ),
+                  ),
+                ],
+          ),
         ],
       ),
       body: SingleChildScrollView(
